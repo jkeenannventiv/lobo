@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import LogoHeader from '../../components/LogoHeader';
 import { saveSession } from '../../config/storage';
+import { syncUserToSupabase } from '../../config/userService';
 
-export default function EmailScreen({ navigation }: any) {
+export default function EmailScreen({ navigation, route }: any) {
+  const { phone } = route.params || {};
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
 
@@ -19,13 +21,22 @@ export default function EmailScreen({ navigation }: any) {
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
 
   const handleContinue = async () => {
-    if (!isValidEmail(email)) {
+      if (!isValidEmail(email)) {
       setError('Please enter a valid email address.');
       return;
     }
- setError('');
-    await saveSession('', email);
-    navigation.navigate('Location');
+    setError('');
+    await saveSession(phone || '', email);
+    syncUserToSupabase(phone || '', email).then(() => {
+      }).catch((e: any) => {
+      console.error('Supabase sync error:', e);
+    });
+    navigation.navigate('Consent');
+  };
+
+  const handleSkip = () => {
+    saveSession(phone || '', '');
+    navigation.navigate('Consent');
   };
 
   return (
@@ -35,44 +46,32 @@ export default function EmailScreen({ navigation }: any) {
     >
       <LogoHeader />
       <View style={styles.inner}>
-        <TouchableOpacity
-          style={styles.back}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.title}>Backup{'\n'}Login</Text>
+        <Text style={styles.title}>Add Your{'\n'}Email Address</Text>
         <Text style={styles.subtitle}>
-          Add an email address so you can recover your account
-          if you change your phone number.
+          Used for account recovery and administrative communications.
         </Text>
 
         <TextInput
           style={styles.input}
-          placeholder="your@email.com"
+          placeholder="you@example.com"
           placeholderTextColor="#aaaaaa"
           keyboardType="email-address"
           autoCapitalize="none"
-          autoCorrect={false}
           value={email}
           onChangeText={setEmail}
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Text style={styles.disclaimer}>
-          Your email is only used for account recovery. We will never
-          send you marketing emails without your permission.
-        </Text>
       </View>
 
-      <TouchableOpacity
-        style={[styles.button, !isValidEmail(email) && styles.buttonDisabled]}
-        onPress={handleContinue}
-      >
-        <Text style={styles.buttonText}>Continue</Text>
-      </TouchableOpacity>
+      <View style={styles.buttons}>
+        <TouchableOpacity style={styles.button} onPress={handleContinue}>
+          <Text style={styles.buttonText}>Continue</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+          <Text style={styles.skipText}>Skip for now</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -87,13 +86,6 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingTop: 16,
   },
-  back: {
-    marginBottom: 24,
-  },
-  backText: {
-    color: '#555570',
-    fontSize: 16,
-  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -105,7 +97,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#555570',
     marginBottom: 32,
-    lineHeight: 24,
   },
   input: {
     backgroundColor: '#f0f4f8',
@@ -115,33 +106,34 @@ const styles = StyleSheet.create({
     color: '#1a1a2e',
     borderWidth: 1,
     borderColor: '#dddddd',
-    marginBottom: 12,
   },
   error: {
     color: '#e94560',
     fontSize: 13,
-    marginBottom: 12,
+    marginTop: 8,
   },
-  disclaimer: {
-    fontSize: 12,
-    color: '#aaaaaa',
-    marginTop: 16,
-    lineHeight: 18,
+  buttons: {
+    padding: 24,
+    gap: 12,
   },
   button: {
     backgroundColor: '#1a3a5c',
-    margin: 24,
     padding: 18,
     borderRadius: 12,
     alignItems: 'center',
-  },
-  buttonDisabled: {
-    backgroundColor: '#cccccc',
   },
   buttonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 1,
+  },
+  skipButton: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  skipText: {
+    color: '#aaaaaa',
+    fontSize: 15,
   },
 });

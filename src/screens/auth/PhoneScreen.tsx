@@ -7,21 +7,57 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import LogoHeader from '../../components/LogoHeader';
 
 export default function PhoneScreen({ navigation }: any) {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const cleaned = phone.replace(/\D/g, '');
     if (cleaned.length < 10) {
       setError('Please enter a valid 10-digit phone number.');
       return;
     }
     setError('');
-    navigation.navigate('Otp', { phone: '+1' + cleaned });
+    setLoading(true);
+
+    try {
+      if (Platform.OS === 'web') {
+        const { getAuth, signInWithPhoneNumber, RecaptchaVerifier } = await import('firebase/auth');
+        const { default: app } = await import('../../config/firebase');
+        const auth = getAuth(app);
+        if (!(window as any).recaptchaVerifier) {
+          (window as any).recaptchaVerifier = new RecaptchaVerifier(
+            auth,
+            'recaptcha-container',
+            { size: 'invisible' }
+          );
+        }
+        const confirmation = await signInWithPhoneNumber(
+          auth,
+          '+1' + cleaned,
+          (window as any).recaptchaVerifier
+        );
+        navigation.navigate('Otp', { phone: '+1' + cleaned, confirmation });
+      } else {
+        // Native: use @react-native-firebase/auth
+        const auth = (await import('@react-native-firebase/auth')).default;
+        const confirmation = await auth().signInWithPhoneNumber('+1' + cleaned);
+        navigation.navigate('Otp', { phone: '+1' + cleaned, confirmation });
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to send code. Please try again.');
+      if (Platform.OS === 'web' && (window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier.clear();
+        (window as any).recaptchaVerifier = null;
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -56,13 +92,20 @@ export default function PhoneScreen({ navigation }: any) {
         <Text style={styles.disclaimer}>
           By continuing you agree to receive an SMS. Standard rates may apply.
         </Text>
+
+        {Platform.OS === 'web' && <div id="recaptcha-container" />}
       </View>
 
       <TouchableOpacity
-        style={[styles.button, phone.length < 10 && styles.buttonDisabled]}
+        style={[styles.button, (phone.length < 10 || loading) && styles.buttonDisabled]}
         onPress={handleContinue}
+        disabled={loading}
       >
-        <Text style={styles.buttonText}>Send Code</Text>
+        {loading ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <Text style={styles.buttonText}>Send Code</Text>
+        )}
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );

@@ -102,7 +102,7 @@ export default function ExportSuccessScreen({ navigation }: any) {
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             <Text style={styles.hint}>
-              Look for a file named "location-history.json" in your
+              Look for a file named "timeline.json" or "location-history.json" in your
               Downloads folder or Files app.
             </Text>
           </>

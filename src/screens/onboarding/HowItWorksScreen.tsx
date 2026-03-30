@@ -5,60 +5,73 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Platform,
 } from 'react-native';
 import LogoHeader from '../../components/LogoHeader';
+
+const FEATURES = [
+  {
+    emoji: '📥',
+    title: 'Import your Google Timeline',
+    desc: 'Your location history stays on your device — we never upload your raw data.',
+  },
+  {
+    emoji: '📍',
+    title: 'Discover your habits and places',
+    desc: 'See your most visited places, favorite categories, and behavioral patterns.',
+  },
+  {
+    emoji: '📊',
+    title: 'See how you really spend your time',
+    desc: 'Charts and stats break down your movement history in ways you\'ve never seen.',
+  },
+  {
+    emoji: '🔒',
+    title: 'Your location data never leaves your device',
+    desc: 'All insights are computed locally. Only anonymous behavioral flags can optionally be shared.',
+  },
+  {
+    emoji: '🔄',
+    title: 'Refresh data regularly to keep insights current',
+    desc: 'Export a new Timeline file from Google Maps weekly or monthly and re-import to stay up to date.',
+  },
+];
 
 export default function HowItWorksScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       <LogoHeader />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>How Lobo Works</Text>
-        <Text style={styles.subtitle}>Your location history, finally useful.</Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        <View style={styles.card}>
-          <Text style={styles.step}>01</Text>
-          <Text style={styles.stepTitle}>Export Your Timeline</Text>
-          <Text style={styles.stepText}>
-            Download your Google Timeline data directly from your device.
-            It stays on your phone — we guide you through every step.
-          </Text>
+        <Text style={styles.headline}>Visualize Your Timeline</Text>
+        <Text style={styles.subheadline}>
+          Transform your Google location history into personal insights about how you live, move, and spend your time.
+        </Text>
+
+        <View style={styles.features}>
+          {FEATURES.map((f, idx) => (
+            <View key={idx} style={styles.featureRow}>
+              <Text style={styles.featureEmoji}>{f.emoji}</Text>
+              <View style={styles.featureText}>
+                <Text style={styles.featureTitle}>{f.title}</Text>
+                <Text style={styles.featureDesc}>{f.desc}</Text>
+              </View>
+            </View>
+          ))}
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.step}>02</Text>
-          <Text style={styles.stepTitle}>Lobo Processes It</Text>
-          <Text style={styles.stepText}>
-            Lobo reads your timeline file and builds a picture of your habits —
-            places you visit, how often, and when.
-          </Text>
-        </View>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate('Phone')}
+        >
+          <Text style={styles.buttonText}>Get Started →</Text>
+        </TouchableOpacity>
 
-        <View style={styles.card}>
-          <Text style={styles.step}>03</Text>
-          <Text style={styles.stepTitle}>Explore Your Data</Text>
-          <Text style={styles.stepText}>
-            See charts and insights about your lifestyle. Compare anonymously
-            with others. Refresh monthly to keep it current.
-          </Text>
-        </View>
+        <Text style={styles.footer}>
+          Free to use. No credit card required.
+        </Text>
 
-        <View style={styles.card}>
-          <Text style={styles.step}>04</Text>
-          <Text style={styles.stepTitle}>Get Paid (Coming Soon)</Text>
-          <Text style={styles.stepText}>
-            Opt in to let advertisers include you in anonymous audience
-            selections — and earn for your data.
-          </Text>
-        </View>
       </ScrollView>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => navigation.navigate('Phone')}
-      >
-        <Text style={styles.buttonText}>Get Started</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -70,56 +83,66 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: 24,
-    paddingTop: 16,
+    paddingTop: 8,
+    paddingBottom: 48,
   },
-  title: {
-    fontSize: 28,
+  headline: {
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#1a1a2e',
-    marginBottom: 8,
+    marginBottom: 12,
+    lineHeight: 38,
   },
-  subtitle: {
+  subheadline: {
     fontSize: 15,
     color: '#555570',
-    marginBottom: 24,
+    lineHeight: 23,
+    marginBottom: 32,
   },
-  card: {
-    backgroundColor: '#f0f4f8',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#e94560',
+  features: {
+    gap: 20,
+    marginBottom: 36,
   },
-  step: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#e94560',
-    letterSpacing: 2,
-    marginBottom: 6,
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
   },
-  stepTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  featureEmoji: {
+    fontSize: 26,
+    width: 36,
+    marginTop: 1,
+  },
+  featureText: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#1a1a2e',
-    marginBottom: 8,
+    marginBottom: 3,
   },
-  stepText: {
-    fontSize: 14,
+  featureDesc: {
+    fontSize: 13,
     color: '#555570',
-    lineHeight: 22,
+    lineHeight: 20,
   },
   button: {
     backgroundColor: '#1a3a5c',
-    margin: 24,
     padding: 18,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
+    marginBottom: 16,
   },
   buttonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+  },
+  footer: {
+    fontSize: 12,
+    color: '#aaaaaa',
+    textAlign: 'center',
   },
 });

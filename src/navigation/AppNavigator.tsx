@@ -9,10 +9,13 @@ import PhoneScreen from '../screens/auth/PhoneScreen';
 import OtpScreen from '../screens/auth/OtpScreen';
 import EmailScreen from '../screens/auth/EmailScreen';
 import LocationScreen from '../screens/onboarding/LocationScreen';
+import ConsentScreen from '../screens/onboarding/ConsentScreen';
 import ExportGuideScreen from '../screens/onboarding/ExportGuideScreen';
 import ExportSuccessScreen from '../screens/onboarding/ExportSuccessScreen';
 import ProcessingScreen from '../screens/ProcessingScreen';
 import EnrichmentScreen from '../screens/EnrichmentScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import LocationSetupScreen from '../screens/LocationSetupScreen';
 
 // Main App
 import HomeScreen from '../screens/HomeScreen';
@@ -31,12 +34,15 @@ export default function AppNavigator() {
         <Stack.Screen name="Phone" component={PhoneScreen} />
         <Stack.Screen name="Otp" component={OtpScreen} />
         <Stack.Screen name="Email" component={EmailScreen} />
+        <Stack.Screen name="Consent" component={ConsentScreen} />
         <Stack.Screen name="Location" component={LocationScreen} />
         <Stack.Screen name="ExportGuide" component={ExportGuideScreen} />
         <Stack.Screen name="ExportSuccess" component={ExportSuccessScreen} />
         <Stack.Screen name="Processing" component={ProcessingScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Enrichment" component={EnrichmentScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="LocationSetup" component={LocationSetupScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

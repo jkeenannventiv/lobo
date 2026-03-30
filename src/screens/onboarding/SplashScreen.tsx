@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, Animated } from 'react-native';
-import { getSession } from '../../config/storage';
+import { getSession, isConsentCurrent } from '../../config/storage';
+import { getVisitCount } from '../../config/database';
 
-const splashImage = require('../../../assets/lobo_splash_prototype.png');
+const splashImage = require('../../../assets/lobo_place_splash.png');
 
 export default function SplashScreen({ navigation }: any) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -22,11 +23,28 @@ export default function SplashScreen({ navigation }: any) {
       }),
     ]).start(async () => {
       const session = await getSession();
-      if (session) {
-        navigation.replace('Home');
-      } else {
+      if (!session) {
+        // New user — start onboarding
         navigation.replace('HowItWorks');
+        return;
       }
+
+      const consentCurrent = await isConsentCurrent();
+      if (!consentCurrent) {
+        // Returning user who hasn't consented to current version
+        navigation.replace('Consent');
+        return;
+      }
+
+      const visitCount = await getVisitCount();
+      if (visitCount === 0) {
+        // Logged in and consented but no data yet — go to import
+        navigation.replace('ExportGuide');
+        return;
+      }
+
+      // Fully returning user — go straight to dashboard
+      navigation.replace('Home');
     });
   }, []);
 

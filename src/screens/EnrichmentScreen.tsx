@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import LogoHeader from '../components/LogoHeader';
-import { getAllVisits, updateVisitPoi } from '../config/database';
+import { getAllVisits, updateVisitPoi, updateVisitPoiByPlaceId, getWeekInReview, WeekInReview, computeSegments, getNightsAwayFromHome } from '../config/database';
+import { getLastImportTimestamp } from '../config/database';
 import { lookupPoi } from '../config/poi';
+import { lookupCategory, applyNameHeuristics, normalizeGoogleCategory } from '../config/categoryMappings';
 
 export default function EnrichmentScreen({ navigation }: any) {
   const [status, setStatus] = useState('Starting enrichment...');
@@ -15,6 +17,7 @@ export default function EnrichmentScreen({ navigation }: any) {
   const [total, setTotal] = useState(0);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  const [weekReview, setWeekReview] = useState<WeekInReview | null>(null);
 
   useEffect(() => {
     runEnrichment();
@@ -46,12 +49,34 @@ export default function EnrichmentScreen({ navigation }: any) {
           poi = seen.get(key)!;
         } else {
           const result = await lookupPoi(visit.latitude, visit.longitude, visit.place_id);
-          poi = { name: result.name, category: result.category };
+          // Apply category corrections in priority order:
+          // 1. Chain lookup (exact brand match) — highest confidence
+          // 2. Name keyword heuristics — beats Google even if Google has a category
+          // 3. Google category normalization — only if name gives us nothing
+          let correctedCategory = result.category;
+          if (result.name) {
+            const nameMatch = lookupCategory(result.name) || applyNameHeuristics(result.name);
+            if (nameMatch) {
+              // Name-based match always wins — overrides whatever Google said
+              correctedCategory = nameMatch.subcategory || nameMatch.category;
+            } else {
+              // No name match — normalize Google's raw category if possible
+              const normalized = normalizeGoogleCategory(result.category);
+              if (normalized) {
+                correctedCategory = normalized.subcategory || normalized.category;
+              }
+            }
+          }
+          poi = { name: result.name, category: correctedCategory };
           seen.set(key, poi);
           await new Promise(r => setTimeout(r, 200));
         }
 
-        await updateVisitPoi(visit.latitude, visit.longitude, poi.name, poi.category);
+        if (visit.place_id) {
+          await updateVisitPoiByPlaceId(visit.place_id, poi.name, poi.category);
+        } else {
+          await updateVisitPoi(visit.latitude, visit.longitude, poi.name, poi.category);
+        }
         processed++;
         setCurrent(processed);
         setStatus(
@@ -60,6 +85,37 @@ export default function EnrichmentScreen({ navigation }: any) {
       }
 
       setStatus(`Done! Enriched ${toEnrich.length} visits across ${seen.size} unique locations.`);
+
+      // Compute week in review
+      try {
+        const importTs = await getLastImportTimestamp();
+        const review = await getWeekInReview(importTs);
+        setWeekReview(review);
+      } catch {}
+
+      // Push full segment flags to Supabase in background
+      import('../config/userService').then(async ({ pushSegmentsToSupabase }) => {
+        try {
+          const { getSession, getConsent, getHomeLocation } = await import('../config/storage');
+          const session = await getSession();
+          const consent = await getConsent();
+          if (session?.phone && consent?.dataSharingOptIn) {
+            const segs = await computeSegments();
+            const nightsData = await getNightsAwayFromHome();
+            const homeLoc = await getHomeLocation();
+            await pushSegmentsToSupabase(
+              session.phone,
+              segs.map(s => ({ id: s.id, level: s.level })),
+              homeLoc?.lat ?? nightsData.homeLat,
+              homeLoc?.lon ?? nightsData.homeLon,
+              true
+            );
+          }
+        } catch (e) {
+          console.error('Segment push error:', e);
+        }
+      });
+
       setDone(true);
 
     } catch (e: any) {
@@ -96,6 +152,51 @@ export default function EnrichmentScreen({ navigation }: any) {
         {error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : null}
+
+        {done && weekReview && (
+          <View style={styles.reviewCard}>
+            <Text style={styles.reviewTitle}>🏆 Your Week in Review</Text>
+            {weekReview.topPlace && (
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewEmoji}>📍</Text>
+                <Text style={styles.reviewText}>
+                  Most visited: <Text style={styles.reviewHighlight}>{weekReview.topPlace}</Text>
+                  {weekReview.topPlaceCount > 1 ? ` (${weekReview.topPlaceCount}x)` : ''}
+                </Text>
+              </View>
+            )}
+            {weekReview.uniquePlaces > 0 && (
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewEmoji}>🗺️</Text>
+                <Text style={styles.reviewText}>
+                  <Text style={styles.reviewHighlight}>{weekReview.uniquePlaces} unique places</Text> visited this week
+                </Text>
+              </View>
+            )}
+            {weekReview.totalTrips > 0 && (
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewEmoji}>🚗</Text>
+                <Text style={styles.reviewText}>
+                  <Text style={styles.reviewHighlight}>{weekReview.totalTrips} trips</Text> recorded
+                </Text>
+              </View>
+            )}
+            {weekReview.activityVsAvg !== 'insufficient' && (
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewEmoji}>
+                  {weekReview.activityVsAvg === 'more' ? '⬆️' : weekReview.activityVsAvg === 'less' ? '⬇️' : '➡️'}
+                </Text>
+                <Text style={styles.reviewText}>
+                  {weekReview.activityVsAvg === 'more'
+                    ? `More active than usual — ${weekReview.weekVisits} visits vs your avg of ${weekReview.avgWeeklyVisits}`
+                    : weekReview.activityVsAvg === 'less'
+                    ? `Quieter week than usual — ${weekReview.weekVisits} visits vs your avg of ${weekReview.avgWeeklyVisits}`
+                    : `About average this week — ${weekReview.weekVisits} visits`}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {done && (
           <TouchableOpacity
@@ -194,5 +295,39 @@ const styles = StyleSheet.create({
   skipText: {
     color: '#555570',
     fontSize: 16,
+  },
+  reviewCard: {
+    backgroundColor: '#f0f4f8',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#e94560',
+  },
+  reviewTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#1a1a2e',
+    marginBottom: 12,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+    gap: 8,
+  },
+  reviewEmoji: {
+    fontSize: 16,
+    width: 24,
+  },
+  reviewText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#555570',
+    lineHeight: 20,
+  },
+  reviewHighlight: {
+    fontWeight: 'bold',
+    color: '#1a1a2e',
   },
 });

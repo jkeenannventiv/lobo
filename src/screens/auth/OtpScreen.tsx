@@ -11,7 +11,7 @@ import {
 import LogoHeader from '../../components/LogoHeader';
 
 export default function OtpScreen({ navigation, route }: any) {
-  const { phone } = route.params;
+  const { phone, confirmation } = route.params;
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const inputs = useRef<Array<TextInput | null>>([]);
@@ -31,14 +31,26 @@ export default function OtpScreen({ navigation, route }: any) {
     }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     const fullCode = code.join('');
     if (fullCode.length < 6) {
       setError('Please enter the full 6-digit code.');
       return;
     }
     setError('');
-    navigation.navigate('Email');
+
+    if (confirmation) {
+      try {
+        await confirmation.confirm(fullCode);
+        navigation.navigate('Email', { phone });
+      } catch (e: any) {
+        setError('Invalid code. Please try again.');
+        setCode(['', '', '', '', '', '']);
+        inputs.current[0]?.focus();
+      }
+    } else {
+      navigation.navigate('Email', { phone });
+    }
   };
 
   const isComplete = code.every(d => d !== '');
@@ -67,7 +79,7 @@ export default function OtpScreen({ navigation, route }: any) {
           {code.map((digit, index) => (
             <TextInput
               key={index}
-              ref={ref => (inputs.current[index] = ref)}
+              ref={(ref: any) => (inputs.current[index] = ref)}
               style={[styles.codeInput, digit ? styles.codeInputFilled : null]}
               value={digit}
               onChangeText={text => handleChange(text.slice(-1), index)}

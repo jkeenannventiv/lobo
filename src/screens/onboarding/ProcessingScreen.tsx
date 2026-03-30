@@ -18,7 +18,6 @@ export default function ProcessingScreen({ navigation, route }: any) {
   const [status, setStatus] = useState('Initializing...');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
-  const [warning, setWarning] = useState('');
 
   useEffect(() => {
     processFile();
@@ -89,19 +88,10 @@ export default function ProcessingScreen({ navigation, route }: any) {
       });
 
 
-      // Check if data is sparse — few visits might mean Timeline was recently enabled
-      const visitCount = records.filter((r: any) => r.activity === 'Visit').length;
-      const totalCount = records.length;
-      if (visitCount === 0 && totalCount > 0) {
-        setWarning('We imported your data but found no place visits — this can happen if Google Timeline was recently enabled or if your export only contains driving data. Your insights will improve as Google captures more visits over time.');
-      } else if (visitCount < 10 && totalCount > 50) {
-        setWarning(`We found ${visitCount} place visits out of ${totalCount} records. For best results, make sure Google Timeline has been active for at least a few weeks.`);
-      }
-
       setStatus('Done!');
       setTimeout(() => {
         navigation.replace('Enrichment');
-      }, 1500);
+      }, 1000);
 
     } catch (e: any) {
       setError(e.message || 'Something went wrong processing your file.');
@@ -120,16 +110,10 @@ export default function ProcessingScreen({ navigation, route }: any) {
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${progress}%` }]} />
             </View>
-            {warning ? (
-              <View style={styles.warningBox}>
-                <Text style={styles.warningText}>{warning}</Text>
-              </View>
-            ) : (
-              <Text style={styles.hint}>
-                This may take a minute for large files.{'\n'}
-                Please keep the app open.
-              </Text>
-            )}
+            <Text style={styles.hint}>
+              This may take a minute for large files.{'\n'}
+              Please keep the app open.
+            </Text>
           </>
         ) : (
           <>
@@ -198,19 +182,5 @@ const styles = StyleSheet.create({
     color: '#e94560',
     textAlign: 'center',
     lineHeight: 22,
-  },
-  warningBox: {
-    backgroundColor: '#fff8ee',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#f5a623',
-    marginTop: 8,
-  },
-  warningText: {
-    fontSize: 13,
-    color: '#555570',
-    lineHeight: 20,
-    textAlign: 'center',
   },
 });

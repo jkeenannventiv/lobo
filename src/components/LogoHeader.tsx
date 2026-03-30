@@ -1,14 +1,43 @@
 import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, Image, Text, StyleSheet, Platform, StatusBar, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
-export default function LogoHeader() {
+type Props = {
+  refreshDue?: boolean;
+};
+
+export default function LogoHeader({ refreshDue = false }: Props) {
+  const navigation = useNavigation<any>();
+
   return (
     <View style={styles.container}>
-      <Image
-        source={require('../../assets/Lobo_logo_movements.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+      <TouchableOpacity onPress={async () => {
+        const { getSession } = await import('../config/storage');
+        const session = await getSession();
+        if (session) {
+          navigation.navigate('Home');
+        }
+      }}>
+        <Image
+          source={require('../../assets/lobo_tmline_sm.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </TouchableOpacity>
+      <View style={styles.rightIcons}>
+        <TouchableOpacity
+          style={[styles.refreshButton, refreshDue && styles.refreshButtonDue]}
+          onPress={() => navigation.navigate('ExportGuide')}
+        >
+          <Text style={styles.refreshButtonIcon}>🔄</Text>
+          <Text style={[styles.refreshButtonText, refreshDue && styles.refreshButtonTextDue]}>
+            Refresh Data
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+          <Text style={styles.settingsIcon}>⚙️</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -16,13 +45,52 @@ export default function LogoHeader() {
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    paddingTop: 40,
-    paddingLeft: 16,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 8 : 50,
+    paddingHorizontal: 16,
     paddingBottom: 8,
     backgroundColor: '#ffffff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 120 : 170,
   },
   logo: {
-    width: 260,
-    height: 170,
+    width: 200,
+    height: 160,
+    marginLeft: -20,
+  },
+  rightIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingsIcon: {
+    fontSize: 24,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f4f8',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  refreshButtonDue: {
+    backgroundColor: '#fff3e0',
+    borderColor: '#f5a623',
+  },
+  refreshButtonIcon: {
+    fontSize: 14,
+  },
+  refreshButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#555570',
+  },
+  refreshButtonTextDue: {
+    color: '#f5a623',
   },
 });

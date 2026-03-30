@@ -89,14 +89,21 @@ export default function ExportGuideScreen({ navigation }: any) {
   const handleDeepLink = async () => {
     try {
       if (platform === 'android') {
-        const supported = await Linking.canOpenURL('android.settings.LOCATION_SOURCE_SETTINGS');
-        if (supported) {
-          await Linking.openURL('android.settings.LOCATION_SOURCE_SETTINGS');
-        } else {
-          await Linking.openURL('app-settings:');
-        }
+        // Try to open Google Maps Timeline export directly
+        // Falls back to Google Maps app, then web
+        const mapsTimeline = 'https://www.google.com/maps/timeline';
+        await Linking.openURL(mapsTimeline);
       } else {
-        await Linking.openURL('app-settings:');
+        // iOS — open Google Maps app if installed, fallback to web
+        const googleMapsApp = 'comgooglemaps://';
+        const mapsTimeline = 'https://www.google.com/maps/timeline';
+        const mapsInstalled = await Linking.canOpenURL(googleMapsApp);
+        if (mapsInstalled) {
+          // Open Maps app — user navigates to Timeline from there
+          await Linking.openURL(googleMapsApp);
+        } else {
+          await Linking.openURL(mapsTimeline);
+        }
       }
     } catch (e) {
       setDeepLinkFailed(true);
@@ -145,21 +152,27 @@ export default function ExportGuideScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.deepLinkButton} onPress={handleDeepLink}>
-          <Text style={styles.deepLinkButtonText}>
-            {platform === 'android' ? '⚙️ Open Settings' : '⚙️ Open Settings'}
-          </Text>
-        </TouchableOpacity>
-
-        {deepLinkFailed && (
-          <View style={styles.deepLinkFailed}>
-            <Text style={styles.deepLinkFailedText}>
-              Couldn't open automatically — please follow the manual steps below.
+        {platform === 'ios' ? (
+          <TouchableOpacity style={styles.deepLinkButton} onPress={handleDeepLink}>
+            <Text style={styles.deepLinkButtonText}>🗺️ Open Google Maps</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.androidTip}>
+            <Text style={styles.androidTipText}>
+              📱 On Android, export lives in device settings — not in the Google Maps app. Follow the steps below.
             </Text>
           </View>
         )}
 
-        <Text style={styles.orDivider}>— or follow the steps manually —</Text>
+        {deepLinkFailed && (
+          <View style={styles.deepLinkFailed}>
+            <Text style={styles.deepLinkFailedText}>
+              Couldn't open Google Maps automatically — please follow the manual steps below.
+            </Text>
+          </View>
+        )}
+
+        <Text style={styles.orDivider}>{platform === 'ios' ? '— then follow these steps —' : '— follow these steps —'}</Text>
 
         {steps.map((step, index) => (
           <View key={index} style={styles.stepCard}>
@@ -179,10 +192,10 @@ export default function ExportGuideScreen({ navigation }: any) {
         <View style={styles.tipCard}>
           <Text style={styles.tipTitle}>💡 Good to know</Text>
           <Text style={styles.tipText}>
-            Your Timeline file can be large if you have years of location
-            history. Make sure you have a stable wifi connection before
-            exporting. The file never leaves your device until you
-            choose to import it into Lobo.
+            Your Timeline file can be large if you have years of location history. Make sure you have a stable wifi connection before exporting. The file never leaves your device until you choose to import it into Lobo.
+          </Text>
+          <Text style={[styles.tipText, { marginTop: 8 }]}>
+            For the best experience, export and refresh weekly — Lobo will show you a summary of your last 7 days each time you import.
           </Text>
         </View>
 
@@ -262,6 +275,19 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  androidTip: {
+    backgroundColor: '#f0f4f8',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#1a3a5c',
+  },
+  androidTipText: {
+    fontSize: 14,
+    color: '#555570',
+    lineHeight: 21,
   },
   deepLinkFailed: {
     backgroundColor: '#fff8ee',
