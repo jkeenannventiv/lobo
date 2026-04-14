@@ -77,6 +77,9 @@ function cleanActivityLabel(activity: string): string {
 
 const HIDDEN_CATEGORIES = ['Road', 'Unknown', 'Business', 'Point of Interest'];
 
+// Disable system font scaling for consistent cross-platform rendering
+(Text as any).defaultProps = { ...((Text as any).defaultProps || {}), allowFontScaling: false };
+
 export default function HomeScreen({ navigation, route }: any) {
   const [refreshDue, setRefreshDue] = useState(false);
   const [lastImport, setLastImport] = useState<string | null>(null);
@@ -108,10 +111,18 @@ export default function HomeScreen({ navigation, route }: any) {
   const [searchResults, setSearchResults] = useState<{ name: string; category: string; visitCount: number; lastVisit: number; totalMinutes: number }[]>([]);
   const [expandedPlace, setExpandedPlace] = useState<string | null>(null);
   const [placeVisits, setPlaceVisits] = useState<{ timestamp: number; duration_minutes: number; category: string }[]>([]);
+  const [mostRecentTs, setMostRecentTs] = useState<number>(0);
 
   useEffect(() => {
     loadData();
-  }, [selectedRange]);
+  }, [activeTab, selectedRange]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadData();
+    });
+    return unsubscribe;
+  }, [navigation, activeTab, selectedRange]);
 
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
@@ -138,6 +149,7 @@ export default function HomeScreen({ navigation, route }: any) {
 
   const loadData = async () => {
     const mostRecentTs = await getMostRecentVisitTimestamp();
+    setMostRecentTs(mostRecentTs);
     const homeLoc = await getHomeLocation();
     const workLoc = await getWorkLocation();
     setHomeLocationSet(homeLoc !== null);
@@ -146,36 +158,43 @@ export default function HomeScreen({ navigation, route }: any) {
     const importTs = await getLastImportTimestamp();
     const count = await getVisitCount();
     const days = TIME_RANGES[selectedRange].days;
-    const activities = await getTopActivities(days, importTs);
-    const categories = await getTopCategories(days, importTs);
-    const places = await getTopPlaces(days, importTs);
-    const dow = await getVisitsByDayOfWeek(days, importTs);
-    const tod = await getVisitsByTimeOfDay(days, importTs);
-    const monthly = await getMonthlyVisits(36500);
-    const stats = await getTotalStats(days, importTs);
-    const distance = await getMonthlyDistance(days, importTs);
-    const duration = await getTopPlacesByDuration(days, importTs);
     setImportTimestamp(importTs);
-
-    const [alloc7, alloc180] = await Promise.all([
-      getTimeAllocation(days, importTs),
-      getTimeAllocation(180, importTs),
-    ]);
-    setTimeAlloc7(alloc7);
-    setTimeAlloc180(alloc180);
-
     setRefreshDue(due);
     setHasData(count > 0);
     setVisitCount(count);
+
+    // Load overview/stats data only when needed
+    const activities = await getTopActivities(days, importTs, mostRecentTs);
+    const categories = await getTopCategories(days, importTs, mostRecentTs);
+    const places = await getTopPlaces(days, importTs, mostRecentTs);
+    const duration = await getTopPlacesByDuration(days, importTs, mostRecentTs);
     setTopActivities(activities);
     setTopCategories(categories);
     setTopPlaces(places);
-    setDayOfWeek(dow);
-    setTimeOfDay(tod);
-    setMonthlyVisits(monthly);
-    setTotalStats(stats);
-    setMonthlyDistance(distance);
     setTopByDuration(duration);
+
+    // Load charts data only when on charts tab
+    if (activeTab === 'charts') {
+      const dow = await getVisitsByDayOfWeek(days, importTs, mostRecentTs);
+      const tod = await getVisitsByTimeOfDay(days, importTs, mostRecentTs);
+      const monthly = await getMonthlyVisits(510); // ~17 months
+      const distance = await getMonthlyDistance(510, importTs, mostRecentTs); // ~17 months
+      setDayOfWeek(dow);
+      setTimeOfDay(tod);
+      setMonthlyVisits(monthly);
+      setMonthlyDistance(distance);
+    }
+
+    // Stats only when on stats tab
+    const stats = activeTab === 'stats' ? await getTotalStats(days, importTs, mostRecentTs) : null;
+    if (stats) setTotalStats(stats);
+
+    const [alloc7, alloc180] = await Promise.all([
+      getTimeAllocation(days, importTs, mostRecentTs, homeLoc, workLoc),
+      getTimeAllocation(180, importTs, mostRecentTs, homeLoc, workLoc),
+    ]);
+    setTimeAlloc7(alloc7);
+    setTimeAlloc180(alloc180);
 
     const fun = await getFunStats();
     setFunStats(fun);
@@ -203,9 +222,9 @@ export default function HomeScreen({ navigation, route }: any) {
   const totalHours = topActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
   const filteredCategories = topCategories.filter((c: any) => !HIDDEN_CATEGORIES.includes(c.category));
   const filteredPlaces = topPlaces.filter((p: any) => !HIDDEN_CATEGORIES.includes(p.category) && p.category !== null);
-  const maxDow = Math.max(...dayOfWeek.map(d => d.count), 1);
-  const maxTod = Math.max(...timeOfDay.map(t => t.count), 1);
-  const maxMonthly = Math.max(...monthlyVisits.map(m => m.count), 1);
+  const maxDow = (dayOfWeek || []).reduce((max, d) => Math.max(max, d.count), 1);
+  const maxTod = (timeOfDay || []).reduce((max, t) => Math.max(max, t.count), 1);
+  const maxMonthly = (monthlyVisits || []).reduce((max, m) => Math.max(max, m.count), 1);
 
   return (
     <View style={styles.container}>
@@ -217,50 +236,47 @@ export default function HomeScreen({ navigation, route }: any) {
           <>
             <View style={styles.statRow}>
               <View style={styles.statCard}>
-                <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
+                <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
                   {visitCount.toLocaleString()}
                 </Text>
-                <Text style={styles.statLabel} numberOfLines={1}>Records</Text>
+                <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false}>Records</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
+                <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
                   {placeVisitCount.toLocaleString()}
                 </Text>
-                <Text style={styles.statLabel} numberOfLines={1}>Visits</Text>
+                <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false}>Visits</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
+                <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
                   {mostRecentDataDate || lastImport || '—'}
                 </Text>
-                <Text style={styles.statLabel} numberOfLines={1}>Data Through</Text>
+                <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false}>Latest</Text>
               </View>
             </View>
 
             <View style={styles.tabs}>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
-                onPress={() => setActiveTab('overview')}
-              >
-                <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>Overview</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'charts' && styles.tabActive]}
-                onPress={() => setActiveTab('charts')}
-              >
-                <Text style={[styles.tabText, activeTab === 'charts' && styles.tabTextActive]}>Charts</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'stats' && styles.tabActive]}
-                onPress={() => setActiveTab('stats')}
-              >
-                <Text style={[styles.tabText, activeTab === 'stats' && styles.tabTextActive]}>Stats</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tab, activeTab === 'history' && styles.tabActive]}
-                onPress={() => setActiveTab('history')}
-              >
-                <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>History</Text>
-              </TouchableOpacity>
+              {(['overview', 'charts', 'stats', 'history'] as const).map((tab) => {
+                const label = tab === 'overview' ? 'Overview' :
+                              tab === 'charts' ? 'Charts' :
+                              tab === 'stats' ? 'Stats' : 'History';
+                return (
+                  <TouchableOpacity
+                    key={tab}
+                    style={[styles.tab, activeTab === tab && styles.tabActive]}
+                    onPress={() => setActiveTab(tab)}
+                  >
+                    <Text
+                      style={[styles.tabText, activeTab === tab && styles.tabTextActive]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      allowFontScaling={false}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {!homeLocationSet && hasData && (
@@ -308,9 +324,7 @@ export default function HomeScreen({ navigation, route }: any) {
                 {topActivities.length > 0 && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Activity Breakdown</Text>
-                    <Text style={styles.cardSubtitle}>
-                      {TIME_RANGES[selectedRange].label === 'All' ? 'All time' : `Last ${TIME_RANGES[selectedRange].label}`} · hours per activity type
-                    </Text>
+
                     <View style={styles.barChart}>
                       {topActivities.map((item: any, idx: number) => {
                         const pct = totalHours > 0 ? Math.round((item.hours / totalHours) * 100) : 0;
@@ -346,7 +360,7 @@ export default function HomeScreen({ navigation, route }: any) {
                 {timeAlloc7 && timeAlloc7.totalHours > 0 ? (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Where You Spend Your Time</Text>
-                    <Text style={styles.cardSubtitle}>{TIME_RANGES[selectedRange].label === 'All' ? 'All time' : `Last ${TIME_RANGES[selectedRange].label}`} vs 6-month avg</Text>
+                    <Text style={styles.cardSubtitle}>{TIME_RANGES[selectedRange].label === 'All' ? 'All time' : `Most Recent ${TIME_RANGES[selectedRange].label}`} vs 6-month avg</Text>
                     <TimeAllocationChart alloc7={timeAlloc7} alloc180={timeAlloc180} rangeLabel={TIME_RANGES[selectedRange].label} />
                   </View>
                 ) : (topActivities.length > 0 && hasData) ? (
@@ -380,7 +394,7 @@ export default function HomeScreen({ navigation, route }: any) {
                           />
                         </View>
                         <View style={styles.activityLabel}>
-                          <Text style={styles.activityName}>{item.category}</Text>
+                          <Text style={styles.activityName}>{item.category?.replace('Sports & Recreation', 'Sports & Rec').replace('Home Improvement', 'Home Improv')}</Text>
                           <Text style={styles.activityCount}>{item.count} visits {drillCategory === item.category ? '▲' : '▼'}</Text>
                         </View>
                         {drillCategory === item.category && (
@@ -449,36 +463,57 @@ export default function HomeScreen({ navigation, route }: any) {
                 {dayOfWeek.length > 0 && dayOfWeek.some(d => d.count > 0) && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Trips by Day of Week</Text>
-                    <PieChart
-                      data={dayOfWeek.map((item, idx) => ({
-                        label: item.day.slice(0, 3),
-                        value: item.count,
-                        color: `hsl(${210 + idx * 20}, 60%, ${40 + idx * 5}%)`,
-                      }))}
-                    />
+                    <View style={styles.hBarChart}>
+                      {(() => {
+                        const dowTotal = dayOfWeek.reduce((s, d) => s + d.count, 0);
+                        return dayOfWeek.map((item, idx) => {
+                        const pct = dowTotal > 0 ? (item.count / dowTotal) * 100 : 0;
+                        return (
+                          <View key={idx} style={styles.hBarRow}>
+                            <Text style={styles.hBarLabel} allowFontScaling={false}>{item.day.slice(0,3)}</Text>
+                            <View style={styles.hBarTrack}>
+                              <View style={[styles.hBarFill, { width: `${pct}%`, backgroundColor: `hsl(${210 + idx * 20}, 60%, ${40 + idx * 5}%)` }]} />
+                            </View>
+                            <Text style={styles.hBarCount} allowFontScaling={false}>{Math.round(pct)}%</Text>
+                          </View>
+                        );
+                      });
+                      })()}
+                    </View>
                   </View>
                 )}
 
                 {timeOfDay.length > 0 && timeOfDay.some(t => t.count > 0) && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Trips by Time of Day</Text>
-                    <PieChart
-                      data={timeOfDay.map((item, idx) => ({
-                        label: ['Morning', 'Afternoon', 'Evening', 'Night'][idx] || item.period,
-                        value: item.count,
-                        color: TOD_COLORS[idx],
-                      }))}
-                    />
+                    <View style={styles.hBarChart}>
+                      {(() => {
+                        const todTotal = timeOfDay.reduce((s, t) => s + t.count, 0);
+                        return timeOfDay.map((item, idx) => {
+                        const label = ['Morning', 'Afternoon', 'Evening', 'Night'][idx] || item.period;
+                        const pct = todTotal > 0 ? (item.count / todTotal) * 100 : 0;
+                        return (
+                          <View key={idx} style={styles.hBarRow}>
+                            <Text style={styles.hBarLabel} allowFontScaling={false}>{label}</Text>
+                            <View style={styles.hBarTrack}>
+                              <View style={[styles.hBarFill, { width: `${pct}%`, backgroundColor: TOD_COLORS[idx] }]} />
+                            </View>
+                            <Text style={styles.hBarCount} allowFontScaling={false}>{Math.round(pct)}%</Text>
+                          </View>
+                        );
+                      });
+                      })()}
+                    </View>
                   </View>
                 )}
 
                 {monthlyVisits.length > 0 && (
                   <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Monthly Trip Trend — Last 12 Months</Text>
+                    <Text style={styles.cardTitle}>Monthly Trip Trend</Text>
                     <View style={styles.barChartVertical}>
                       {monthlyVisits.map((item, idx) => (
                         <View key={idx} style={styles.verticalBarCol}>
-                          <Text style={styles.verticalBarCount}>{item.count}</Text>
+                          <Text style={styles.verticalBarCount} allowFontScaling={false}>{item.count}</Text>
                           <View style={styles.verticalBarTrack}>
                             <View
                               style={[
@@ -490,7 +525,7 @@ export default function HomeScreen({ navigation, route }: any) {
                               ]}
                             />
                           </View>
-                          <Text style={styles.verticalBarLabel}>{item.month}</Text>
+                          <Text style={styles.verticalBarLabel} numberOfLines={2} allowFontScaling={false}>{item.month.slice(0,1)}{`\n`}{item.month.slice(-2)}</Text>
                         </View>
                       ))}
                     </View>
@@ -532,31 +567,31 @@ export default function HomeScreen({ navigation, route }: any) {
 
                 <View style={styles.statRow}>
                   <View style={styles.statCard}>
-                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
+                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
                       {totalStats.totalMiles.toLocaleString()}
                     </Text>
-                    <Text style={styles.statLabel} numberOfLines={1}>Miles</Text>
+                    <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false}>Miles</Text>
                   </View>
                   <View style={styles.statCard}>
-                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
+                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
                       {totalStats.totalHoursDriving.toLocaleString()}
                     </Text>
-                    <Text style={styles.statLabel} numberOfLines={1}>Hrs Driving</Text>
+                    <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Hrs Driven</Text>
                   </View>
                   <View style={styles.statCard}>
-                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
+                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
                       {totalStats.longestTrip > 0 ? `${totalStats.longestTrip}m` : '—'}
                     </Text>
-                    <Text style={styles.statLabel} numberOfLines={1}>Longest Trip</Text>
+                    <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Longest Trip</Text>
                   </View>
                 </View>
                 {totalStats.avgMilesPerTrip > 0 && (
                   <View style={[styles.statRow, { marginBottom: 16 }]}>
                     <View style={[styles.statCard, { flex: 1 }]}>
-                      <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>
-                        {totalStats.avgMilesPerTrip.toLocaleString()}
+                      <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
+                        {totalStats.avgMilesPerTrip > 0 ? totalStats.avgMilesPerTrip.toFixed(1) : '—'}
                       </Text>
-                      <Text style={styles.statLabel} numberOfLines={1}>Avg Miles / Trip</Text>
+                      <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Avg Mi/Trip</Text>
                     </View>
                   </View>
                 )}
@@ -564,30 +599,42 @@ export default function HomeScreen({ navigation, route }: any) {
                 {monthlyDistance.length > 0 && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Miles Driven by Month</Text>
-                    <View style={styles.barChartVertical}>
-                      {monthlyDistance.map((item, idx) => {
-                        const maxMiles = Math.max(...monthlyDistance.map(d => d.miles), 1);
-                        return (
-                          <View key={idx} style={styles.verticalBarCol}>
-                            <Text style={styles.verticalBarCount}>
-                              {item.miles > 999 ? item.miles.toLocaleString() : item.miles}
-                            </Text>
-                            <View style={styles.verticalBarTrack}>
-                              <View
-                                style={[
-                                  styles.verticalBarFill,
-                                  {
-                                    height: `${Math.round((item.miles / maxMiles) * 100)}%`,
-                                    backgroundColor: '#38a169',
-                                  },
-                                ]}
-                              />
-                            </View>
-                            <Text style={styles.verticalBarLabel}>{item.month}</Text>
+                    {monthlyDistance.length > 0 && (() => {
+                      const maxMiles = monthlyDistance.reduce((max, d) => Math.max(max, d.miles), 1);
+                      const midMiles = Math.round(maxMiles / 2);
+                      const fmtMiles = (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : `${v}`;
+                      return (
+                        <View style={styles.axisChartContainer}>
+                          {/* Y-axis labels */}
+                          <View style={styles.yAxis}>
+                            <Text style={styles.yAxisLabel} allowFontScaling={false}>{fmtMiles(maxMiles)}</Text>
+                            <Text style={styles.yAxisLabel} allowFontScaling={false}>{fmtMiles(midMiles)}</Text>
+                            <Text style={styles.yAxisLabel} allowFontScaling={false}>0</Text>
                           </View>
-                        );
-                      })}
-                    </View>
+                          {/* Chart area */}
+                          <View style={styles.axisChartArea}>
+                            {/* Grid lines */}
+                            <View style={styles.gridLineTop} />
+                            <View style={styles.gridLineMid} />
+                            <View style={styles.gridLineBottom} />
+                            {/* Bars */}
+                            <View style={styles.barChartVertical}>
+                              {monthlyDistance.map((item, idx) => (
+                                <View key={idx} style={styles.verticalBarCol}>
+                                  <View style={styles.verticalBarTrack}>
+                                    <View style={[styles.verticalBarFill, {
+                                      height: `${Math.round((item.miles / maxMiles) * 100)}%`,
+                                      backgroundColor: '#38a169',
+                                    }]} />
+                                  </View>
+                                  <Text style={styles.verticalBarLabel} numberOfLines={2} allowFontScaling={false}>{item.month.slice(0,1)}{`\n`}{item.month.slice(-2)}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })()}
                   </View>
                 )}
 
@@ -680,8 +727,7 @@ export default function HomeScreen({ navigation, route }: any) {
                     <View style={styles.funStatRow}>
                       <Text style={styles.funStatIcon}>🌙</Text>
                       <Text style={styles.funStatText}>
-                        You've had <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text>
-                        {nightsAway >= 7 ? ` — that's ${Math.floor(nightsAway / 7)} week${Math.floor(nightsAway / 7) !== 1 ? 's' : ''} on the road` : ''}
+                        Road Warrior! <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the selected period
                       </Text>
                     </View>
                   )}
@@ -722,18 +768,33 @@ export default function HomeScreen({ navigation, route }: any) {
             )}
             {activeTab === 'history' && (
               <>
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search places..."
-                  placeholderTextColor="#aaa"
-                  value={searchQuery}
-                  onChangeText={text => {
-                    setSearchQuery(text);
-                    if (expandedPlace) { setExpandedPlace(null); setPlaceVisits([]); }
-                  }}
-                  clearButtonMode="while-editing"
-                  autoCorrect={false}
-                />
+                <View style={styles.searchContainer}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search places..."
+                    placeholderTextColor="#aaa"
+                    value={searchQuery}
+                    onChangeText={text => {
+                      setSearchQuery(text);
+                      if (expandedPlace) { setExpandedPlace(null); setPlaceVisits([]); }
+                    }}
+                    clearButtonMode="while-editing"
+                    autoCorrect={false}
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity
+                      style={styles.searchClear}
+                      onPress={() => {
+                        setSearchQuery('');
+                        setSearchResults([]);
+                        setExpandedPlace(null);
+                        setPlaceVisits([]);
+                      }}
+                    >
+                      <Text style={styles.searchClearText}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
 
                 {searchQuery.trim().length >= 2 ? (
                   <View style={styles.card}>
@@ -804,7 +865,7 @@ export default function HomeScreen({ navigation, route }: any) {
                       <Text style={styles.cardTitle}>Recent Visits</Text>
                       {recentActivity.map((item, idx) => {
                         const date = new Date(item.timestamp);
-                        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' AM', 'am').replace(' PM', 'pm');
                         const hours = Math.floor(item.duration_minutes / 60);
                         const mins = item.duration_minutes % 60;
                         const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
@@ -812,7 +873,7 @@ export default function HomeScreen({ navigation, route }: any) {
                           <View key={idx} style={styles.historyRow}>
                             <View style={styles.historyDate}>
                               <Text style={styles.historyDateText}>{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
-                              <Text style={styles.historyTimeText}>{timeStr}</Text>
+                              <Text style={styles.historyTimeText} allowFontScaling={false} numberOfLines={1}>{timeStr}</Text>
                             </View>
                             <View style={styles.historyDivider} />
                             <View style={styles.historyInfo}>
@@ -931,13 +992,13 @@ function TimeAllocationChart({
           {keys.map(key => {
             const hrs = getHours(alloc, key);
             const pct = total > 0 ? (hrs / total) * 100 : 0;
-            if (pct < 8) return null; // skip label if segment too narrow
+            if (pct < 12) return null; // skip label if segment too narrow
             return (
               <Text
                 key={key}
                 style={[taStyles.barSegmentLabel, { width: `${pct}%`, color: TIME_ALLOC_COLORS[key] }]}
               >
-                {hrs}h ({Math.round(pct)}%)
+                {hrs}h
               </Text>
             );
           })}
@@ -948,7 +1009,7 @@ function TimeAllocationChart({
 
   return (
     <View style={taStyles.container}>
-      {renderBar(alloc7, `Last ${rangeLabel}`)}
+      {renderBar(alloc7, `Most Recent ${rangeLabel}`)}
       {alloc180 && alloc180.totalHours > 0 && renderBar(alloc180, '6-month avg')}
       <View style={taStyles.legend}>
         {keys.map(key => (
@@ -1021,62 +1082,59 @@ const taStyles = StyleSheet.create({
 type PieSlice = { label: string; value: number; color: string };
 
 function PieChart({ data }: { data: PieSlice[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  if (total === 0) return null;
-
+  const total = data.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
+  if (total === 0 || data.length === 0) {
+    return (
+      <Text style={{ color: '#888', padding: 20, textAlign: 'center', fontSize: 14 }}>
+        No data for this period
+      </Text>
+    );
+  }
   const SIZE = 160;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
   const r = 64;
-  const innerR = 36; // donut hole
-
-  // Build slices
-  const slices: { path: string; color: string; midAngle: number; pct: number; label: string }[] = [];
-  let startAngle = -Math.PI / 2; // start at 12 o'clock
-
+  const innerR = 36;
+  const safeCos = (a: number) => Math.cos(Math.max(-Math.PI * 2, Math.min(Math.PI * 2, a)));
+  const safeSin = (a: number) => Math.sin(Math.max(-Math.PI * 2, Math.min(Math.PI * 2, a)));
+  const slices: { path: string; color: string; pct: number; label: string }[] = [];
+  let startAngle = -Math.PI / 2;
   for (const slice of data) {
-    const pct = slice.value / total;
-    const angle = pct * 2 * Math.PI;
+    const value = Math.max(0, slice.value);
+    if (value === 0) continue;
+    const pct = value / total;
+    const angle = Math.max(0.001, pct * 2 * Math.PI);
     const endAngle = startAngle + angle;
-    const midAngle = startAngle + angle / 2;
-
-    const x1 = cx + r * Math.cos(startAngle);
-    const y1 = cy + r * Math.sin(startAngle);
-    const x2 = cx + r * Math.cos(endAngle);
-    const y2 = cy + r * Math.sin(endAngle);
-    const ix1 = cx + innerR * Math.cos(endAngle);
-    const iy1 = cy + innerR * Math.sin(endAngle);
-    const ix2 = cx + innerR * Math.cos(startAngle);
-    const iy2 = cy + innerR * Math.sin(startAngle);
+    const x1 = cx + r * safeCos(startAngle);
+    const y1 = cy + r * safeSin(startAngle);
+    const x2 = cx + r * safeCos(endAngle);
+    const y2 = cy + r * safeSin(endAngle);
+    const ix1 = cx + innerR * safeCos(endAngle);
+    const iy1 = cy + innerR * safeSin(endAngle);
+    const ix2 = cx + innerR * safeCos(startAngle);
+    const iy2 = cy + innerR * safeSin(startAngle);
     const largeArc = angle > Math.PI ? 1 : 0;
-
     const path = [
-      `M ${x1} ${y1}`,
-      `A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
-      `L ${ix1} ${iy1}`,
-      `A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix2} ${iy2}`,
+      `M ${x1.toFixed(2)} ${y1.toFixed(2)}`,
+      `A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`,
+      `L ${ix1.toFixed(2)} ${iy1.toFixed(2)}`,
+      `A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix2.toFixed(2)} ${iy2.toFixed(2)}`,
       'Z',
     ].join(' ');
-
-    slices.push({ path, color: slice.color, midAngle, pct: Math.round(pct * 100), label: slice.label });
+    slices.push({ path, color: slice.color, pct: Math.round(pct * 100), label: slice.label });
     startAngle = endAngle;
   }
-
   return (
     <View style={pieStyles.container}>
       <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-        <G>
-          {slices.map((s, i) => (
-            <Path key={i} d={s.path} fill={s.color} stroke="#ffffff" strokeWidth={1.5} />
-          ))}
-        </G>
+        <G>{slices.map((s, i) => <Path key={i} d={s.path} fill={s.color} stroke="#ffffff" strokeWidth={1.5} />)}</G>
       </Svg>
       <View style={pieStyles.legend}>
         {slices.map((s, i) => (
           <View key={i} style={pieStyles.legendRow}>
             <View style={[pieStyles.legendDot, { backgroundColor: s.color }]} />
-            <Text style={pieStyles.legendLabel}>{s.label}</Text>
-            <Text style={pieStyles.legendPct}>{s.pct}%</Text>
+            <Text style={pieStyles.legendLabel} allowFontScaling={false} numberOfLines={1}>{s.label}</Text>
+            <Text style={pieStyles.legendPct} allowFontScaling={false}>{s.pct}%</Text>
           </View>
         ))}
       </View>
@@ -1086,19 +1144,25 @@ function PieChart({ data }: { data: PieSlice[] }) {
 
 const pieStyles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
     marginTop: 8,
   },
   legend: {
-    flex: 1,
-    gap: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
   },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    paddingHorizontal: 4,
+    maxWidth: '48%',
+    flexShrink: 1,
   },
   legendDot: {
     width: 10,
@@ -1106,13 +1170,14 @@ const pieStyles = StyleSheet.create({
     borderRadius: 5,
   },
   legendLabel: {
+    fontSize: 11,
+    flexShrink: 1,
     flex: 1,
-    fontSize: 13,
     color: '#1a1a2e',
     fontWeight: '500',
   },
   legendPct: {
-    fontSize: 13,
+    fontSize: 10,
     color: '#555570',
     fontWeight: '600',
   },
@@ -1172,7 +1237,6 @@ const drillStyles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    fontSize: 13,
     color: '#1a1a2e',
     fontWeight: '500',
   },
@@ -1182,13 +1246,11 @@ const drillStyles = StyleSheet.create({
     marginTop: 2,
   },
   count: {
-    fontSize: 13,
     color: '#1a3a5c',
     fontWeight: 'bold',
     marginLeft: 8,
   },
   empty: {
-    fontSize: 13,
     color: '#888',
     fontStyle: 'italic',
     padding: 8,
@@ -1230,7 +1292,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   refreshSubtitle: {
-    fontSize: 13,
     color: '#555570',
     lineHeight: 18,
   },
@@ -1246,10 +1307,10 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 72,
+    minHeight: 92,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#ffffff',
     marginBottom: 4,
@@ -1259,6 +1320,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#a8c4e0',
     textAlign: 'center',
+    fontWeight: '500',
+    paddingHorizontal: 2,
   },
   tabs: {
     flexDirection: 'row',
@@ -1269,17 +1332,20 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 3,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   tabActive: {
     backgroundColor: '#1a3a5c',
   },
   tabText: {
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '600',
     color: '#555570',
+    textAlign: 'center',
   },
   tabTextActive: {
     color: '#ffffff',
@@ -1288,21 +1354,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#f0f4f8',
     borderRadius: 12,
-    padding: 4,
+    padding: 5,
     marginBottom: 16,
   },
   timeRangeButton: {
     flex: 1,
-    padding: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   timeRangeActive: {
     backgroundColor: '#1a3a5c',
   },
   timeRangeText: {
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '600',
     color: '#555570',
   },
   timeRangeTextActive: {
@@ -1315,7 +1383,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   cardTitle: {
-    fontSize: 13,
     fontWeight: 'bold',
     color: '#1a3a5c',
     letterSpacing: 1,
@@ -1347,7 +1414,6 @@ const styles = StyleSheet.create({
   },
   barLabel: {
     flex: 1,
-    fontSize: 13,
     color: '#1a1a2e',
     fontWeight: '500',
   },
@@ -1375,8 +1441,10 @@ const styles = StyleSheet.create({
   barChartVertical: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: 140,
+    height: 155,
     gap: 4,
+    marginTop: 28,
+    marginBottom: 12,
   },
   verticalBarCol: {
     flex: 1,
@@ -1386,8 +1454,11 @@ const styles = StyleSheet.create({
   },
   verticalBarCount: {
     fontSize: 9,
-    color: '#555570',
-    marginBottom: 2,
+    fontWeight: '600',
+    color: '#1a3a5c',
+    marginBottom: 8,
+    textAlign: 'center',
+    height: 20,
   },
   verticalBarTrack: {
     width: '100%',
@@ -1403,7 +1474,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   verticalBarLabel: {
-    fontSize: 10,
+    fontSize: 8,
     color: '#555570',
     marginTop: 4,
     textAlign: 'center',
@@ -1434,7 +1505,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   activityCount: {
-    fontSize: 13,
     color: '#555570',
   },
   placeRow: {
@@ -1605,7 +1675,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   historyDate: {
-    width: 48,
+    width: 58,
     alignItems: 'center',
   },
   historyDateText: {
@@ -1616,9 +1686,9 @@ const styles = StyleSheet.create({
   },
   historyTimeText: {
     fontSize: 10,
-    color: '#888',
-    textAlign: 'center',
+    color: '#555570',
     marginTop: 2,
+    textAlign: 'center',
   },
   historyDivider: {
     width: 2,
@@ -1639,6 +1709,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#555570',
   },
+  searchContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
   searchInput: {
     backgroundColor: '#f0f4f8',
     borderRadius: 12,
@@ -1646,7 +1720,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: '#1a1a2e',
-    marginBottom: 12,
+    paddingRight: 36,
+  },
+  searchClear: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  searchClearText: {
+    fontSize: 16,
+    color: '#999999',
+    fontWeight: '600',
   },
   searchResultRow: {
     flexDirection: 'row',
@@ -1692,5 +1779,97 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     width: 50,
     textAlign: 'right',
+  },
+  axisChartContainer: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  yAxis: {
+    width: 36,
+    height: 155,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingRight: 4,
+    paddingBottom: 20,
+  },
+  yAxisLabel: {
+    fontSize: 10,
+    color: '#888',
+    fontWeight: '500',
+  },
+  axisChartArea: {
+    flex: 1,
+    position: 'relative',
+  },
+  gridLineTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: '#e0e6ed',
+  },
+  gridLineMid: {
+    position: 'absolute',
+    top: '50%',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: '#e0e6ed',
+  },
+  gridLineBottom: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: '#e0e6ed',
+  },
+  hBarChart: {
+    marginTop: 8,
+    gap: 8,
+  },
+  hBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hBarLabel: {
+    fontSize: 12,
+    color: '#555570',
+    fontWeight: '500',
+    width: 60,
+  },
+  hBarTrack: {
+    flex: 1,
+    height: 18,
+    backgroundColor: '#e8edf2',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  hBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  hBarCount: {
+    fontSize: 12,
+    color: '#1a3a5c',
+    fontWeight: '600',
+    width: 32,
+    textAlign: 'right',
+  },
+  locationPromptBanner: {
+    backgroundColor: '#e8f0fe',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
+  locationPromptText: {
+    fontSize: 14,
+    color: '#1a3a5c',
+    flex: 1,
+    lineHeight: 20,
   },
 });

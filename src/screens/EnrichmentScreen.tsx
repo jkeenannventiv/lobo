@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import LogoHeader from '../components/LogoHeader';
 import { getAllVisits, updateVisitPoi, updateVisitPoiByPlaceId, getWeekInReview, WeekInReview, computeSegments, getNightsAwayFromHome } from '../config/database';
@@ -128,7 +129,7 @@ export default function EnrichmentScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       <LogoHeader />
-      <View style={styles.inner}>
+      <ScrollView contentContainerStyle={styles.inner} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>
           {done ? '✅ Enrichment Complete!' : '🔍 Enriching Your Data'}
         </Text>
@@ -215,7 +216,7 @@ export default function EnrichmentScreen({ navigation }: any) {
             <Text style={styles.skipText}>Skip for now</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -226,9 +227,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     padding: 24,
     paddingTop: 32,
+    paddingBottom: 40,
   },
   title: {
     fontSize: 24,

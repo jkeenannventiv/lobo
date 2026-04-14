@@ -1,4 +1,7 @@
 import React from 'react';
+import { Text as RNText } from 'react-native';
+if (!(RNText as any).defaultProps) (RNText as any).defaultProps = {};
+(RNText as any).defaultProps.allowFontScaling = false;
 import { View, Image, Text, StyleSheet, Platform, StatusBar, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
@@ -31,7 +34,7 @@ export default function LogoHeader({ refreshDue = false }: Props) {
         >
           <Text style={styles.refreshButtonIcon}>🔄</Text>
           <Text style={[styles.refreshButtonText, refreshDue && styles.refreshButtonTextDue]}>
-            Refresh Data
+            Refresh
           </Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
@@ -55,14 +58,14 @@ const styles = StyleSheet.create({
     height: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 120 : 170,
   },
   logo: {
-    width: 200,
-    height: 160,
-    marginLeft: -20,
+    width: 170,
+    height: 130,
+    marginLeft: -16,
   },
   rightIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   settingsIcon: {
     fontSize: 24,

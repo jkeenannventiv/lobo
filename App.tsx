@@ -4,6 +4,9 @@ import * as NavigationBar from 'expo-navigation-bar';
 import { Platform, View, StyleSheet } from 'react-native';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initDatabase } from './src/config/database';
+import { Text } from 'react-native';
+if (!(Text as any).defaultProps) (Text as any).defaultProps = {};
+(Text as any).defaultProps.allowFontScaling = false;
 
 export default function App() {
   useEffect(() => {

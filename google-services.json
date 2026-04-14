@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:767492319864:android:66ff9d5e9273bbac1bdb8d",
+        "android_client_info": {
+          "package_name": "app.getlobo.lobo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhrhTXtnJp9TB_dbR3uPAyJcZdhSsCve8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:767492319864:android:62e59fe5ccc4ae841bdb8d",
         "android_client_info": {
           "package_name": "com.lobo.app"

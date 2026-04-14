@@ -12,25 +12,44 @@
       "backgroundColor": "#0d1b2a"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.lobo.app"
+      "supportsTablet": false,
+      "bundleIdentifier": "app.getlobo.lobo",
+      "buildNumber": "4",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-  "icon": "./assets/icon.png",
-  "package": "com.lobo.app",
-  "googleServicesFile": "./google-services.json",
-  "navigationBar": {
-    "backgroundColor": "#ffffff",
-    "barStyle": "dark-content"
-  }
-},
+      "icon": "./assets/icon.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "app.getlobo.lobo",
+      "versionCode": 3,
+      "googleServicesFile": "./google-services.json",
+      "navigationBar": {
+        "backgroundColor": "#ffffff",
+        "barStyle": "dark-content"
+      }
+    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-sqlite",
       "@react-native-firebase/app",
-      "@react-native-firebase/auth"
+      "@react-native-firebase/auth",
+       [
+         "expo-build-properties",
+         {
+           "ios": {
+              "useFrameworks": "static",
+              "forceStaticLinking": ["RNFBApp", "RNFBAuth"]
+           }
+         }
+       ]
     ],
     "extra": {
       "eas": {

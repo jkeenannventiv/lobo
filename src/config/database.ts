@@ -67,6 +67,8 @@ export async function initDatabase() {
       category TEXT,
       place_id TEXT
     );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_visits_timestamp_activity
+      ON visits(timestamp, activity);
     -- Add distance_meters to existing tables if upgrading
     CREATE TABLE IF NOT EXISTS visits_migration_done (id INTEGER PRIMARY KEY);`);
   // Migrate existing databases to add distance_meters column
@@ -96,9 +98,24 @@ export async function clearVisits() {
 export async function insertVisits(visits: Omit<Visit, 'id'>[]) {
   if (isWeb) {
     const existing = await getAllVisits();
-    const withIds = visits.map((v, i) => ({ ...v, id: existing.length + i + 1, distance_meters: v.distance_meters ?? null }));
+    // Build a set of existing keys to prevent duplicates
+    const existingKeys = new Set(existing.map(v => `${v.timestamp}_${v.activity}`));
+    const newVisits = visits.filter(v => !existingKeys.has(`${v.timestamp}_${v.activity}`));
+    if (newVisits.length === 0) return;
+    const withIds = newVisits.map((v, i) => ({ ...v, id: existing.length + i + 1, distance_meters: v.distance_meters ?? null }));
     const all = [...existing, ...withIds];
-    await AsyncStorage.setItem('lobo_visits', JSON.stringify(all));
+    try {
+      await AsyncStorage.setItem('lobo_visits', JSON.stringify(all));
+    } catch (e: any) {
+      // Storage quota exceeded — store a minimal version without optional fields
+      const minimal = all.map(v => ({
+        id: v.id, timestamp: v.timestamp, latitude: v.latitude,
+        longitude: v.longitude, activity: v.activity,
+        duration_minutes: v.duration_minutes, distance_meters: v.distance_meters,
+        place_name: v.place_name, category: v.category, place_id: v.place_id,
+      }));
+      await AsyncStorage.setItem('lobo_visits', JSON.stringify(minimal));
+    }
     return;
   }
   const database = await getDb();
@@ -106,7 +123,7 @@ export async function insertVisits(visits: Omit<Visit, 'id'>[]) {
   await database.withTransactionAsync(async () => {
     for (const v of visits) {
       await database.runAsync(
-        `INSERT INTO visits (timestamp, latitude, longitude, activity, duration_minutes, distance_meters, place_name, category, place_id)
+        `INSERT OR IGNORE INTO visits (timestamp, latitude, longitude, activity, duration_minutes, distance_meters, place_name, category, place_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [v.timestamp, v.latitude, v.longitude, v.activity, v.duration_minutes, v.distance_meters ?? null, v.place_name, v.category, v.place_id]
       );
@@ -168,7 +185,14 @@ export async function getAllVisits(): Promise<Visit[]> {
   if (isWeb) {
     try {
       const val = await AsyncStorage.getItem('lobo_visits');
-      return val ? JSON.parse(val) : [];
+      if (!val) return [];
+      const parsed = JSON.parse(val);
+      // Filter out records with null/invalid coordinates that would crash toFixed()
+      return parsed.filter((v: any) =>
+        v != null &&
+        typeof v.latitude === 'number' && !isNaN(v.latitude) &&
+        typeof v.longitude === 'number' && !isNaN(v.longitude)
+      );
     } catch {
       return [];
     }
@@ -222,8 +246,8 @@ export async function getVisitCount(): Promise<number> {
   return (result as any)?.count ?? 0;
 }
 
-export async function getTopActivities(days = 36500, importTimestamp?: number): Promise<{ activity: string; count: number; hours: number }[]> {
-  const base = importTimestamp || Date.now();
+export async function getTopActivities(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ activity: string; count: number; hours: number }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   const MAX_SEGMENT_MINUTES = 60; // cap single segment at 1 hour
   if (isWeb) {
@@ -269,8 +293,8 @@ export async function getTopActivities(days = 36500, importTimestamp?: number): 
   return results as { activity: string; count: number; hours: number }[];
 }
 
-export async function getTopCategories(days = 36500, importTimestamp?: number): Promise<{ category: string; count: number }[]> {
-  const base = importTimestamp || Date.now();
+export async function getTopCategories(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ category: string; count: number }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   if (isWeb) {
     const visits = await getAllVisits();
@@ -296,8 +320,8 @@ export async function getTopCategories(days = 36500, importTimestamp?: number): 
   return results as { category: string; count: number }[];
 }
 
-export async function getTopPlaces(days = 36500, importTimestamp?: number): Promise<{ name: string; count: number; category: string }[]> {
-  const base = importTimestamp || Date.now();
+export async function getTopPlaces(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ name: string; count: number; category: string }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   if (isWeb) {
     const visits = await getAllVisits();
@@ -355,8 +379,8 @@ export async function getEnrichedCount(): Promise<number> {
   return (result as any)?.count ?? 0;
 }
 
-export async function getVisitsByDayOfWeek(days = 36500, importTimestamp?: number): Promise<{ day: string; count: number }[]> {
-  const base = importTimestamp || Date.now();
+export async function getVisitsByDayOfWeek(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ day: string; count: number }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   if (isWeb) {
@@ -385,8 +409,8 @@ export async function getVisitsByDayOfWeek(days = 36500, importTimestamp?: numbe
   return dayNames.map((day, i) => ({ day, count: counts[i] }));
 }
 
-export async function getVisitsByTimeOfDay(days = 36500, importTimestamp?: number): Promise<{ period: string; count: number }[]> {
-  const base = importTimestamp || Date.now();
+export async function getVisitsByTimeOfDay(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ period: string; count: number }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   const periods = ['Morning', 'Afternoon', 'Evening', 'Night'];
   if (isWeb) {
@@ -422,7 +446,7 @@ export async function getVisitsByTimeOfDay(days = 36500, importTimestamp?: numbe
   return periods.map((period, i) => ({ period, count: counts[i] }));
 }
 
-export async function getMonthlyVisits(days = 36500): Promise<{ month: string; count: number }[]> {
+export async function getMonthlyVisits(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ month: string; count: number }[]> {
   const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   if (isWeb) {
@@ -458,8 +482,8 @@ export async function getMonthlyVisits(days = 36500): Promise<{ month: string; c
       count: r.count,
     }));
 }
-export async function getMonthlyDistance(days = 36500, importTimestamp?: number): Promise<{ month: string; miles: number }[]> {
-  const base = importTimestamp || Date.now();
+export async function getMonthlyDistance(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ month: string; miles: number }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -526,8 +550,8 @@ function effectiveDrivingMinutes(v: Visit): number {
   return Math.min(v.duration_minutes || 0, 45);
 }
 
-export async function getTotalStats(days = 36500, importTimestamp?: number): Promise<{ totalMiles: number; totalVisits: number; totalHoursDriving: number; longestTrip: number; avgMilesPerTrip: number }> {
-  const base = importTimestamp || Date.now();
+export async function getTotalStats(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ totalMiles: number; totalVisits: number; totalHoursDriving: number; longestTrip: number; avgMilesPerTrip: number }> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   if (isWeb) {
     const visits = await getAllVisits();
@@ -549,7 +573,7 @@ export async function getTotalStats(days = 36500, importTimestamp?: number): Pro
       driving.reduce((sum, v) => sum + effectiveDrivingMinutes(v), 0) / 60
     );
     const longestTrip = driving.length > 0 ? Math.max(...driving.map(v => effectiveDrivingMinutes(v))) : 0;
-    const avgMilesPerTrip = driving.length > 0 ? Math.round(totalMiles / driving.length) : 0;
+    const avgMilesPerTrip = driving.length > 0 ? Math.round((totalMiles / driving.length) * 10) / 10 : 0;
 
     return {
       totalMiles: Math.round(totalMiles),
@@ -594,7 +618,7 @@ export async function getTotalStats(days = 36500, importTimestamp?: number): Pro
     totalVisits: visitCount?.count || 0,
     totalHoursDriving: Math.round((drivingStats?.total_minutes || 0) / 60),
     longestTrip: drivingStats?.longest_trip > 0 ? drivingStats.longest_trip : 0,
-    avgMilesPerTrip: tripCount > 0 ? Math.round(totalMiles / tripCount) : 0,
+    avgMilesPerTrip: tripCount > 0 ? Math.round((totalMiles / tripCount) * 10) / 10 : 0,
   };
 }
 
@@ -812,8 +836,8 @@ export async function getFunStats(): Promise<{
   return { hoursInCar, daysDataSpans, uniquePlaces, mostVisitedDay, mostVisitedTime, avgTripsPerWeek };
 }
 
-export async function getTopPlacesByDuration(days = 36500, importTimestamp?: number): Promise<{ name: string; totalMinutes: number; visits: number; avgMinutes: number }[]> {
-  const base = importTimestamp || Date.now();
+export async function getTopPlacesByDuration(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ name: string; totalMinutes: number; visits: number; avgMinutes: number }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   if (isWeb) {
     const visits = await getAllVisits();
@@ -850,8 +874,8 @@ export async function getTopPlacesByDuration(days = 36500, importTimestamp?: num
   );
   return results as any[];
 }
-export async function getCategoryVisits(category: string, days = 36500, importTimestamp?: number): Promise<{ name: string; count: number; totalMinutes: number; lastVisit: number }[]> {
-  const base = importTimestamp || Date.now();
+export async function getCategoryVisits(category: string, days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ name: string; count: number; totalMinutes: number; lastVisit: number }[]> {
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   if (isWeb) {
     const visits = await getAllVisits();
@@ -1096,10 +1120,10 @@ export async function computeSegments(): Promise<Segment[]> {
     emoji: '🍽️',
     level: diningCount >= 20 ? 'H' : diningCount >= 8 ? 'M' : 'L',
     description: diningCount >= 20
-      ? `Heavy diner — ${diningCount} restaurant visits this month`
+      ? `Heavy diner — ${diningCount} restaurant visits in your data`
       : diningCount >= 8
-      ? `Moderate diner — ${diningCount} restaurant visits this month`
-      : `Light diner — ${diningCount} restaurant visits this month`,
+      ? `Moderate diner — ${diningCount} restaurant visits in your data`
+      : `Light diner — ${diningCount} restaurant visits in your data`,
   };
 
   // ── 2. Fast food user ────────────────────────────────────────────────────
@@ -1111,10 +1135,10 @@ export async function computeSegments(): Promise<Segment[]> {
     emoji: '🍔',
     level: ffCount >= 15 ? 'H' : ffCount >= 6 ? 'M' : 'L',
     description: ffCount >= 15
-      ? `Heavy — ${ffCount} fast food visits this month`
+      ? `Heavy — ${ffCount} fast food visits in your data`
       : ffCount >= 6
-      ? `Moderate — ${ffCount} fast food visits this month`
-      : `Light — ${ffCount} fast food visits this month`,
+      ? `Moderate — ${ffCount} fast food visits in your data`
+      : `Light — ${ffCount} fast food visits in your data`,
   };
 
   // ── 3. Drive-thru loyal ──────────────────────────────────────────────────
@@ -1139,10 +1163,10 @@ export async function computeSegments(): Promise<Segment[]> {
     emoji: '☕',
     level: coffeeCount >= 12 ? 'H' : coffeeCount >= 8 ? 'M' : 'L',
     description: coffeeCount >= 12
-      ? `Heavy — ${coffeeCount} café visits this month`
+      ? `Heavy — ${coffeeCount} café visits in your data`
       : coffeeCount >= 8
-      ? `Moderate — ${coffeeCount} café visits this month`
-      : `Light — ${coffeeCount} café visits this month`,
+      ? `Moderate — ${coffeeCount} café visits in your data`
+      : `Light — ${coffeeCount} café visits in your data`,
   };
 
   // ── 5. Late night diner ──────────────────────────────────────────────────
@@ -1239,7 +1263,7 @@ export async function computeSegments(): Promise<Segment[]> {
     emoji: '🛍️',
     level: retailVisits.length >= 8 && uniqueRetailStores >= 4 ? 'Y' : 'N',
     description: retailVisits.length >= 8 && uniqueRetailStores >= 4
-      ? `${retailVisits.length} retail visits across ${uniqueRetailStores} stores this month`
+      ? `${retailVisits.length} retail visits across ${uniqueRetailStores} stores in your data`
       : 'Selective retail shopper',
   };
 
@@ -1320,7 +1344,7 @@ export async function computeSegments(): Promise<Segment[]> {
     emoji: '🚙',
     level: commuterLongTrips.length >= 20 ? 'Y' : 'N',
     description: commuterLongTrips.length >= 20
-      ? `${commuterLongTrips.length} qualifying commute trips this month`
+      ? `${commuterLongTrips.length} qualifying commute trips in your data`
       : 'No strong commute pattern detected',
   };
 
@@ -1351,7 +1375,7 @@ export async function computeSegments(): Promise<Segment[]> {
     emoji: '✈️',
     level: nightsData.nightsAway >= 3 ? 'Y' : 'N',
     description: nightsData.nightsAway >= 3
-      ? `${nightsData.nightsAway} nights away from home this month`
+      ? `${nightsData.nightsAway} nights away from home in your data`
       : 'Mostly sleeps at home',
   };
 
@@ -1387,9 +1411,12 @@ export type TimeAllocation = {
 
 export async function getTimeAllocation(
   days: number,
-  importTimestamp?: number
+  importTimestamp?: number,
+  baseTimestamp?: number,
+  homeCoords?: { lat: number; lon: number } | null,
+  workCoords?: { lat: number; lon: number } | null,
 ): Promise<TimeAllocation> {
-  const base = importTimestamp || Date.now();
+  const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);
   const MAX_VISIT_MINS = 1080; // 18hr cap for visits
   const MAX_DRIVE_MINS = 90;   // 90min cap for transit
@@ -1406,35 +1433,45 @@ export async function getTimeAllocation(
     const inWindow = visits.filter(v => v.timestamp >= cutoff);
     if (inWindow.length === 0) return { homeHours: 0, workSchoolHours: 0, transitHours: 0, thirdPlaceHours: 0, totalHours: 0 };
 
-    // Find home cluster — try overnight first, fall back to most frequent location
-    const overnight = visits.filter(v => { const h = new Date(v.timestamp).getHours(); return h >= 22 || h <= 5; });
-    const sourceVisits = overnight.length >= 5 ? overnight : visits;
-    const homeClusters: Record<string, { lat: number; lon: number; count: number }> = {};
-    for (const v of sourceVisits) {
-      const key = `${v.latitude.toFixed(1)},${v.longitude.toFixed(1)}`;
-      if (!homeClusters[key]) homeClusters[key] = { lat: v.latitude, lon: v.longitude, count: 0 };
-      homeClusters[key].count++;
+    // Use provided home coords if available, otherwise auto-detect from overnight clusters
+    let homeLat = homeCoords?.lat ?? 0;
+    let homeLon = homeCoords?.lon ?? 0;
+    if (!homeCoords) {
+      const overnight = visits.filter(v => { const h = new Date(v.timestamp).getHours(); return h >= 22 || h <= 5; });
+      const sourceVisits = overnight.length >= 5 ? overnight : visits;
+      const homeClusters: Record<string, { lat: number; lon: number; count: number }> = {};
+      for (const v of sourceVisits) {
+        const key = `${v.latitude.toFixed(1)},${v.longitude.toFixed(1)}`;
+        if (!homeClusters[key]) homeClusters[key] = { lat: v.latitude, lon: v.longitude, count: 0 };
+        homeClusters[key].count++;
+      }
+      const homeCluster = Object.values(homeClusters).sort((a, b) => b.count - a.count)[0];
+      homeLat = homeCluster?.lat ?? 0;
+      homeLon = homeCluster?.lon ?? 0;
     }
-    const homeCluster = Object.values(homeClusters).sort((a, b) => b.count - a.count)[0];
-    const homeLat = homeCluster?.lat ?? 0;
-    const homeLon = homeCluster?.lon ?? 0;
 
-    // Find work/school: most frequent visit location during weekday 8am-6pm that isn't home
-    const weekdayDay = inWindow.filter(v => {
-      const d = new Date(v.timestamp);
-      const h = d.getHours();
-      const dow = d.getDay();
-      return v.activity === 'Visit' && dow >= 1 && dow <= 5 && h >= 8 && h < 18;
-    });
-    const workClusters: Record<string, { lat: number; lon: number; count: number }> = {};
-    for (const v of weekdayDay) {
-      const key = `${v.latitude.toFixed(1)},${v.longitude.toFixed(1)}`;
-      if (!workClusters[key]) workClusters[key] = { lat: v.latitude, lon: v.longitude, count: 0 };
-      workClusters[key].count++;
+    // Use provided work coords if available, otherwise auto-detect
+    let workLat2 = workCoords?.lat ?? null;
+    let workLon2 = workCoords?.lon ?? null;
+    if (!workCoords) {
+      const weekdayDay = inWindow.filter(v => {
+        const d = new Date(v.timestamp);
+        const h = d.getHours();
+        const dow = d.getDay();
+        return v.activity === 'Visit' && dow >= 1 && dow <= 5 && h >= 8 && h < 18;
+      });
+      const workClusters: Record<string, { lat: number; lon: number; count: number }> = {};
+      for (const v of weekdayDay) {
+        const key = `${v.latitude.toFixed(1)},${v.longitude.toFixed(1)}`;
+        if (!workClusters[key]) workClusters[key] = { lat: v.latitude, lon: v.longitude, count: 0 };
+        workClusters[key].count++;
+      }
+      const workCluster = Object.values(workClusters)
+        .filter(c => haversineDistance(c.lat, c.lon, homeLat, homeLon) > 1)
+        .sort((a, b) => b.count - a.count)[0];
+      workLat2 = workCluster?.lat ?? null;
+      workLon2 = workCluster?.lon ?? null;
     }
-    const workCluster = Object.values(workClusters)
-      .filter(c => homeCluster ? haversineDistance(c.lat, c.lon, homeLat, homeLon) > 1 : true)
-      .sort((a, b) => b.count - a.count)[0];
 
     let homeHours = 0, workSchoolHours = 0, transitHours = 0, thirdPlaceHours = 0;
 
@@ -1447,7 +1484,7 @@ export async function getTimeAllocation(
         const dist = haversineDistance(v.latitude, v.longitude, homeLat, homeLon);
         if (dist <= 0.5) {
           homeHours += cappedMins;
-        } else if (workCluster && haversineDistance(v.latitude, v.longitude, workCluster.lat, workCluster.lon) <= 0.5) {
+        } else if (workLat2 !== null && haversineDistance(v.latitude, v.longitude, workLat2, workLon2!) <= 0.5) {
           workSchoolHours += cappedMins;
         } else if (THIRD_PLACE_CATEGORIES.includes(v.category || '')) {
           thirdPlaceHours += cappedMins;
@@ -1473,37 +1510,45 @@ export async function getTimeAllocation(
   const database = await getDb();
   if (!database) return { homeHours: 0, workSchoolHours: 0, transitHours: 0, thirdPlaceHours: 0, totalHours: 0 };
 
-  // Get home cluster — try overnight first, fall back to most frequent location
-  let overnightRows = await database.getAllAsync(
-    `SELECT ROUND(latitude, 1) as clat, ROUND(longitude, 1) as clon, COUNT(*) as cnt
-     FROM visits
-     WHERE CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) >= 22
-        OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 5
-     GROUP BY clat, clon ORDER BY cnt DESC LIMIT 1;`
-  ) as any[];
-  if (overnightRows.length === 0) {
-    overnightRows = await database.getAllAsync(
+  // Use provided home coords if available, otherwise auto-detect from overnight clusters
+  let homeLat = homeCoords?.lat ?? 0;
+  let homeLon = homeCoords?.lon ?? 0;
+  if (!homeCoords) {
+    let overnightRows = await database.getAllAsync(
       `SELECT ROUND(latitude, 1) as clat, ROUND(longitude, 1) as clon, COUNT(*) as cnt
-       FROM visits GROUP BY clat, clon ORDER BY cnt DESC LIMIT 1;`
+       FROM visits
+       WHERE CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) >= 22
+          OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 5
+       GROUP BY clat, clon ORDER BY cnt DESC LIMIT 1;`
     ) as any[];
+    if (overnightRows.length === 0) {
+      overnightRows = await database.getAllAsync(
+        `SELECT ROUND(latitude, 1) as clat, ROUND(longitude, 1) as clon, COUNT(*) as cnt
+         FROM visits GROUP BY clat, clon ORDER BY cnt DESC LIMIT 1;`
+      ) as any[];
+    }
+    homeLat = overnightRows[0]?.clat ?? 0;
+    homeLon = overnightRows[0]?.clon ?? 0;
   }
-  const homeLat = overnightRows[0]?.clat ?? 0;
-  const homeLon = overnightRows[0]?.clon ?? 0;
 
-  // Get work cluster — most frequent weekday daytime visit not near home
-  const workRows = await database.getAllAsync(
-    `SELECT ROUND(latitude, 1) as clat, ROUND(longitude, 1) as clon, COUNT(*) as cnt
-     FROM visits
-     WHERE activity = 'Visit'
-       AND timestamp >= ?
-       AND CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) BETWEEN 1 AND 5
-       AND CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) BETWEEN 8 AND 18
-     GROUP BY clat, clon ORDER BY cnt DESC LIMIT 5;`,
-    [cutoff]
-  ) as any[];
-  const workRow = workRows.find((r: any) => haversineDistance(r.clat, r.clon, homeLat, homeLon) > 1);
-  const workLat = workRow?.clat ?? null;
-  const workLon = workRow?.clon ?? null;
+  // Use provided work coords if available, otherwise auto-detect
+  let workLat = workCoords?.lat ?? null;
+  let workLon = workCoords?.lon ?? null;
+  if (!workCoords) {
+    const workRows = await database.getAllAsync(
+      `SELECT ROUND(latitude, 1) as clat, ROUND(longitude, 1) as clon, COUNT(*) as cnt
+       FROM visits
+       WHERE activity = 'Visit'
+         AND timestamp >= ?
+         AND CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) BETWEEN 1 AND 5
+         AND CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) BETWEEN 8 AND 18
+       GROUP BY clat, clon ORDER BY cnt DESC LIMIT 5;`,
+      [cutoff]
+    ) as any[];
+    const workRow = workRows.find((r: any) => haversineDistance(r.clat, r.clon, homeLat, homeLon) > 1);
+    workLat = workRow?.clat ?? null;
+    workLon = workRow?.clon ?? null;
+  }
 
   // Get all visits in window
   const rows = await database.getAllAsync(
