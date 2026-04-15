@@ -22,7 +22,6 @@ export type ParseResult = {
 };
 
 function detectFormat(data: any): { format: ParseFormat; segments: any[]; error?: string } {
-  // New iOS format — top-level array with visit/activity objects
   if (Array.isArray(data)) {
     if (data.length === 0) return { format: 'unknown', segments: [], error: 'The file appears to be empty.' };
     const first = data[0];
@@ -32,13 +31,11 @@ function detectFormat(data: any): { format: ParseFormat; segments: any[]; error?
     return { format: 'unknown', segments: [], error: 'Unrecognized file format. Please export your Timeline from Google Maps and try again.' };
   }
 
-  // New Android/Web format — object with semanticSegments array
   if (data.semanticSegments) {
     if (data.semanticSegments.length === 0) return { format: 'unknown', segments: [], error: 'No timeline data found in this file.' };
     return { format: 'new_android', segments: data.semanticSegments };
   }
 
-  // Old raw format — object with locations array of GPS points
   if (data.locations && Array.isArray(data.locations)) {
     return {
       format: 'old_raw',
@@ -47,7 +44,6 @@ function detectFormat(data: any): { format: ParseFormat; segments: any[]; error?
     };
   }
 
-  // Semantic Location History (per-month files)
   if (data.timelineObjects && Array.isArray(data.timelineObjects)) {
     return {
       format: 'unknown',
@@ -66,12 +62,10 @@ function detectFormat(data: any): { format: ParseFormat; segments: any[]; error?
 function parseLatLng(latLng: any): { lat: number; lng: number } {
   if (!latLng) return { lat: 0, lng: 0 };
   if (typeof latLng === 'string') {
-    // Handle geo:lat,lon format
     const geoMatch = latLng.match(/^geo:([-\d.]+),([-\d.]+)/);
     if (geoMatch) {
       return { lat: parseFloat(geoMatch[1]), lng: parseFloat(geoMatch[2]) };
     }
-    // Handle "lat°, lon°" format
     const cleaned = latLng.replace(/°/g, '');
     const parts = cleaned.split(',');
     return {
@@ -114,12 +108,11 @@ function mapActivityToCategory(activity: string): string {
     SAILING: 'Sailing',
     UNKNOWN: 'Unknown',
   };
-  return map[normalized] || 'Driving'; // default unknown movement to Driving
+  return map[normalized] || 'Driving';
 }
 
-
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000; // Earth radius in meters
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a =
@@ -138,31 +131,23 @@ function parseSegment(segment: any): StreamedRecord | null {
     const rawMinutes = Math.round((end - start) / 60000);
 
     if (segment.visit) {
-      // Visits: cap at 18 hours (overnight stays are valid)
       const durationMinutes = Math.min(rawMinutes, 1080);
       const tc = segment.visit.topCandidate;
-      // placeLocation can be "geo:lat,lon" string (iOS) or {latLng: "..."} object (Android/web)
       const placeLocation = tc?.placeLocation;
       const latLng = typeof placeLocation === 'string' ? placeLocation : placeLocation?.latLng;
       const { lat, lng } = parseLatLng(latLng);
-      // placeID (iOS format) or placeId (Android/web format)
       const placeId = tc?.placeID || tc?.placeId || null;
       return { timestamp: start, latitude: lat, longitude: lng, activity: 'Visit', durationMinutes, placeId };
     }
 
     if (segment.activity) {
       const act = segment.activity;
-      // Drop very low confidence segments — usually artifacts
       const segProbability = parseFloat(String(act.probability ?? '1'));
       if (segProbability < 0.6) return null;
-      // Driving/walking: cap at 90 minutes
       const durationMinutes = Math.min(rawMinutes, 90);
-      // start can be "geo:lat,lon" string (iOS) or {latLng: "..."} object (Android)
       const startCoord = act.start?.latLng || act.start;
       const { lat, lng } = parseLatLng(startCoord);
       const actType = act.topCandidate?.type || 'UNKNOWN';
-      // distanceMeters may be a string (iOS) or number (Android)
-      // Cap at 50 miles (80467m) per segment — longer values are almost always GPS artifacts
       const MAX_SEGMENT_MILES = 50;
       const rawDistance = act.distanceMeters ? parseFloat(String(act.distanceMeters)) : null;
       const distanceMeters = rawDistance ? Math.min(rawDistance, MAX_SEGMENT_MILES * 1609.34) : null;
@@ -173,7 +158,6 @@ function parseSegment(segment: any): StreamedRecord | null {
       const point = segment.timelinePath[0].point || '';
       const { lat, lng } = parsePoint(point);
       if (lat !== 0 && lng !== 0) {
-        // Calculate distance from waypoints using haversine
         let distanceMeters = 0;
         const path = segment.timelinePath;
         for (let i = 1; i < path.length; i++) {
@@ -183,15 +167,13 @@ function parseSegment(segment: any): StreamedRecord | null {
             distanceMeters += haversineMeters(p1.lat, p1.lng, p2.lat, p2.lng);
           }
         }
-        // Cap at 50 miles
         const MAX_METERS = 50 * 1609.34;
         const cappedDistance = Math.min(distanceMeters, MAX_METERS);
-        // Derive duration from distance
         const miles = cappedDistance / 1609.34;
         const mph = miles < 3 ? 15 : miles < 10 ? 20 : miles <= 30 ? 35 : 55;
         const durationMinutes = miles > 0
           ? Math.min(Math.round((miles / mph) * 60), 75)
-          : Math.min(rawMinutes, 45); // no waypoints → cap at 45min
+          : Math.min(rawMinutes, 45);
         return { timestamp: start, latitude: lat, longitude: lng, activity: 'Driving', durationMinutes, distanceMeters: cappedDistance > 0 ? cappedDistance : null };
       }
     }
@@ -236,7 +218,6 @@ function extractSegmentsFromChunk(text: string): any[] {
   return segments;
 }
 
-
 function trimDrivingOutliers(records: StreamedRecord[]): StreamedRecord[] {
   const drivingDurations = records
     .filter(r => r.activity === 'Driving')
@@ -252,6 +233,15 @@ function trimDrivingOutliers(records: StreamedRecord[]): StreamedRecord[] {
     if (r.activity !== 'Driving' || r.durationMinutes <= p95Cap) return r;
     return { ...r, durationMinutes: p95Cap };
   });
+}
+
+// Copy a content:// URI to the app cache directory so fetch() can read it
+async function resolveToFileUri(uri: string): Promise<string> {
+  if (!uri.startsWith('content://')) return uri;
+  const FileSystem = await import('expo-file-system/legacy');
+  const cacheUri = FileSystem.cacheDirectory + 'timeline_import.json';
+  await FileSystem.copyAsync({ from: uri, to: cacheUri });
+  return cacheUri;
 }
 
 export async function streamParseTimeline(
@@ -275,7 +265,6 @@ export async function streamParseTimeline(
     const { format, segments, error } = detectFormat(data);
     if (error) return { records: [], format, error };
 
-    // Web: no cutoff — process all available history
     const records: StreamedRecord[] = [];
     for (const segment of segments) {
       const record = parseSegment(segment);
@@ -285,13 +274,14 @@ export async function streamParseTimeline(
     return { records: trimDrivingOutliers(records), format };
   }
 
-  // Native: use fetch() instead of readAsStringAsync to avoid OOM on large files
-  // fetch() streams the response without loading the entire file into memory
+  // Native: resolve content:// URIs first, then use fetch()
   try {
     onProgress(0, 100);
 
-    // First try fetch() approach — memory efficient
-    const response = await fetch(fileUri);
+    // Convert content:// URI to a local file:// URI if needed
+    const resolvedUri = await resolveToFileUri(fileUri);
+
+    const response = await fetch(resolvedUri);
     if (!response.ok) throw new Error('fetch failed');
 
     const text = await response.text();
@@ -301,7 +291,6 @@ export async function streamParseTimeline(
     try {
       data = JSON.parse(text);
     } catch {
-      // Full file parse failed — try chunk extraction for very large files
       onProgress(75, 100);
       const segments = extractSegmentsFromChunk(text);
       if (segments.length === 0) {
@@ -317,7 +306,6 @@ export async function streamParseTimeline(
       return { records: trimDrivingOutliers(records), format: 'new_android' };
     }
 
-    // Full parse succeeded — use format detection
     const { format, segments, error } = detectFormat(data);
     if (error) return { records: [], format, error };
 
