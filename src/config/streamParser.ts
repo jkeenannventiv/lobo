@@ -27,7 +27,7 @@
  *   const entries = await parseTimelineFile(fileUri, (pct) => setProgress(pct));
  */
 
-import { File } from 'expo-file-system';
+import { File } from 'expo-file-system/next';
 import clarinet from 'clarinet';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
