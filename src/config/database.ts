@@ -1083,7 +1083,7 @@ export type Segment = {
   emoji: string;
 };
 
-export async function computeSegments(homeCoords?: { lat: number; lon: number }): Promise<Segment[]> {
+export async function computeSegments(homeCoords?: { lat: number; lon: number } | null): Promise<Segment[]> {
   const visits = await getAllVisits();
   if (visits.length === 0) return [];
 
@@ -1370,10 +1370,12 @@ export async function computeSegments(homeCoords?: { lat: number; lon: number })
   };
 
   // ── 16. Road warrior ─────────────────────────────────────────────────────
-  // Only meaningful if home location is known — auto-detected clusters across
-  // 10 years of data are unreliable; require user-set home for accuracy
+  // homeCoords === null means user hasn't set home — don't show nights away
+  // homeCoords === undefined means use auto-detected cluster (legacy fallback)
+  // homeCoords === {lat,lon} means use confirmed home
   let road_warrior: Segment;
-  if (!homeCoords && !homeCluster) {
+  const useHomeForWarrior = homeCoords !== null && (homeCoords !== undefined || homeCluster);
+  if (!useHomeForWarrior) {
     road_warrior = {
       id: 'road_warrior',
       label: 'Road Warrior',

@@ -217,7 +217,7 @@ export default function HomeScreen({ navigation, route }: any) {
       setNightsAway(0);
     }
 
-    const segs = await computeSegments(homeLoc ?? undefined);
+    const segs = await computeSegments(homeLoc ? { lat: homeLoc.lat, lon: homeLoc.lon } : null);
     setSegments(segs);
 
     const recent = await getRecentActivity(50);
@@ -311,16 +311,14 @@ export default function HomeScreen({ navigation, route }: any) {
             {/* Pending home detection banner — shown when we've detected but not confirmed */}
             {pendingHome && hasData && (
               <View style={styles.pendingHomeBanner}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.pendingHomeTitle}>🏠 Is this your home?</Text>
-                  <Text style={styles.pendingHomeLocation}>{pendingHome.label}</Text>
-                </View>
+                <Text style={styles.pendingHomeTitle}>🏠 Is this your home?</Text>
+                <Text style={styles.pendingHomeLocation}>{pendingHome.label}</Text>
                 <View style={styles.pendingHomeActions}>
                   <TouchableOpacity
                     style={styles.pendingHomeConfirm}
                     onPress={handleConfirmPendingHome}
                   >
-                    <Text style={styles.pendingHomeConfirmText}>✓ Yes</Text>
+                    <Text style={styles.pendingHomeConfirmText}>✓ Yes, that's right</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.pendingHomeChange}
@@ -341,14 +339,13 @@ export default function HomeScreen({ navigation, route }: any) {
               </View>
             )}
 
-            {/* Fallback prompt when no pending detection and home not set */}
             {!pendingHome && !homeLocationSet && hasData && (
               <TouchableOpacity
                 style={styles.locationPromptBanner}
                 onPress={() => navigation.navigate('LocationSetup', { type: 'home' })}
               >
                 <Text style={styles.locationPromptText}>
-                  📍 <Text style={{ fontWeight: 'bold' }}>Set your home location</Text> in Settings for more accurate insights
+                  📍 <Text style={{ fontWeight: 'bold' }}>Tap here to set your home location</Text> for more accurate insights
                 </Text>
               </TouchableOpacity>
             )}
@@ -790,7 +787,7 @@ export default function HomeScreen({ navigation, route }: any) {
                     <View style={styles.funStatRow}>
                       <Text style={styles.funStatIcon}>🌙</Text>
                       <Text style={styles.funStatText}>
-                        Road Warrior! <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the selected period
+                        You spent <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the last 12 months
                       </Text>
                     </View>
                   )}
@@ -1941,55 +1938,56 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: '#1a3a5c',
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 10,
   },
   pendingHomeTitle: {
     fontSize: 13,
     fontWeight: '600' as const,
     color: '#1a3a5c',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   pendingHomeLocation: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#1a1a2e',
-    fontWeight: '500' as const,
+    fontWeight: '600' as const,
+    marginBottom: 12,
   },
   pendingHomeActions: {
     flexDirection: 'row' as const,
-    gap: 6,
+    gap: 8,
     alignItems: 'center' as const,
   },
   pendingHomeConfirm: {
     backgroundColor: '#1a3a5c',
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flex: 1,
+    alignItems: 'center' as const,
   },
   pendingHomeConfirmText: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 'bold' as const,
   },
   pendingHomeChange: {
     backgroundColor: '#f0f4f8',
     borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: '#ddd',
+    alignItems: 'center' as const,
   },
   pendingHomeChangeText: {
     color: '#1a1a2e',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500' as const,
   },
   pendingHomeDismiss: {
-    padding: 6,
+    padding: 8,
   },
   pendingHomeDismissText: {
-    fontSize: 14,
+    fontSize: 16,
     color: '#aaa',
     fontWeight: '600' as const,
   },
