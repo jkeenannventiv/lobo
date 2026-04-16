@@ -18,6 +18,7 @@ import {
   getWorkLocation,
   clearHomeLocation,
   clearWorkLocation,
+  savePendingHomeLocation,
   SavedLocation,
 } from '../config/storage';
 import { lookupByCoords } from '../config/poi';
@@ -85,7 +86,16 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
           const label = poi.address
             ? poi.address.split(',').slice(-3).join(',').trim()
             : `${top.lat.toFixed(3)}, ${top.lon.toFixed(3)}`;
-          setDetected({ lat: top.lat, lon: top.lon, label });
+          const detectedLoc = { lat: top.lat, lon: top.lon, label };
+          setDetected(detectedLoc);
+
+          // For home with no existing location: save as pending so HomeScreen
+          // can show the inline confirmation banner instead of this screen
+          if (isHome && !existing) {
+            await savePendingHomeLocation(detectedLoc);
+            navigation.goBack();
+            return;
+          }
         }
       }
     } catch {}
@@ -108,14 +118,35 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
     setSearching(true);
     setSearchResult(null);
     try {
-      // Photon is an open geocoding API backed by OpenStreetMap data,
-      // more permissive than Nominatim for mobile app usage
+      // Bias search toward the user's known location (detected home/work or current)
+      const biasLat = detected?.lat ?? current?.lat;
+      const biasLon = detected?.lon ?? current?.lon;
+      const biasParams = biasLat && biasLon
+        ? `&lat=${biasLat}&lon=${biasLon}`
+        : '';
+
       const response = await fetch(
-        `https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery.trim())}&limit=1&lang=en`
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery.trim())}&limit=5&lang=en${biasParams}`
       );
       if (response.ok) {
         const data = await response.json();
-        const feature = data?.features?.[0];
+        // Pick the best result — prefer results in the same country/state as bias location
+        const features = data?.features ?? [];
+        let feature = features[0];
+
+        // If we have a bias location, prefer results within ~100 miles
+        if (biasLat && biasLon && features.length > 1) {
+          const nearby = features.find((f: any) => {
+            const [fLon, fLat] = f.geometry.coordinates;
+            const dLat = (fLat - biasLat) * Math.PI / 180;
+            const dLon = (fLon - biasLon) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(biasLat * Math.PI/180) * Math.cos(fLat * Math.PI/180) * Math.sin(dLon/2)**2;
+            const distMiles = 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return distMiles < 200;
+          });
+          if (nearby) feature = nearby;
+        }
+
         if (feature) {
           const [lon, lat] = feature.geometry.coordinates;
           const p = feature.properties;

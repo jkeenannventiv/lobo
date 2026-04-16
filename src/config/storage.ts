@@ -109,3 +109,23 @@ export async function clearHomeLocation(): Promise<void> {
 export async function clearWorkLocation(): Promise<void> {
   await AsyncStorage.removeItem(LOCATION_KEYS.WORK);
 }
+
+// ── Pending home location ─────────────────────────────────────────────────
+// Used to show a confirmation banner on HomeScreen rather than a full screen.
+// LocationSetupScreen writes here after auto-detection; HomeScreen reads and
+// shows "We think your home is near X — Confirm / Change".
+
+const PENDING_HOME_KEY = 'lobo_pending_home_location';
+
+export async function savePendingHomeLocation(loc: Omit<SavedLocation, 'confirmedAt'>): Promise<void> {
+  await AsyncStorage.setItem(PENDING_HOME_KEY, JSON.stringify(loc));
+}
+
+export async function getPendingHomeLocation(): Promise<Omit<SavedLocation, 'confirmedAt'> | null> {
+  const val = await AsyncStorage.getItem(PENDING_HOME_KEY);
+  return val ? JSON.parse(val) : null;
+}
+
+export async function clearPendingHomeLocation(): Promise<void> {
+  await AsyncStorage.removeItem(PENDING_HOME_KEY);
+}

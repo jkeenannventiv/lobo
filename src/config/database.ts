@@ -648,8 +648,7 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
     const visits = await getAllVisits();
     if (visits.length === 0) return { nightsAway: 0, homeLat: null, homeLon: null };
 
-    // Step 1: find home — most frequent overnight location cluster (1-decimal grid ≈ ~7mi)
-    // Always use full history for home detection, regardless of since filter
+    // Step 1: use full history for home detection regardless of since filter
     const overnightVisits = visits.filter(v => {
       const hour = new Date(v.timestamp).getHours();
       return isOvernightHour(hour);
@@ -669,7 +668,7 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
       ? { lat: storedHomeLat, lon: storedHomeLon }
       : clusters[0];
 
-    // Step 2: use overnight records (10pm-4am) filtered to since window
+    // Step 2: use overnight records filtered to since window
     const overnightRecs = visits.filter(v => {
       const h = new Date(v.timestamp).getHours();
       return (h >= 22 || h <= 4) && v.timestamp >= since;
@@ -712,7 +711,7 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
   const homeLat = storedHomeLat ?? (overnightRows[0]?.clat as number);
   const homeLon = storedHomeLon ?? (overnightRows[0]?.clon as number);
 
-  // Step 2: use overnight records (10pm-4am) filtered to since window
+  // Step 2: use overnight records filtered to since window
   const lastPerDay = await database.getAllAsync(
     `SELECT latitude, longitude
      FROM visits
@@ -1084,7 +1083,7 @@ export type Segment = {
   emoji: string;
 };
 
-export async function computeSegments(): Promise<Segment[]> {
+export async function computeSegments(homeCoords?: { lat: number; lon: number }): Promise<Segment[]> {
   const visits = await getAllVisits();
   if (visits.length === 0) return [];
 
@@ -1371,36 +1370,43 @@ export async function computeSegments(): Promise<Segment[]> {
   };
 
   // ── 16. Road warrior ─────────────────────────────────────────────────────
-  // Count nights away in last 365 days — meaningful annual context
-  const cutoff365 = now - (365 * 24 * 60 * 60 * 1000);
-  const nightsData = await getNightsAwayFromHome();
-  // Filter to last 365 days only
-  const recentNightsAway = nightsData.nightsAway; // getNightsAwayFromHome already uses all visits; we'll use a separate count
-  // Use visits from last year to compute nights away
-  const overnightLast365 = visits.filter(v => {
-    const h = hour(v.timestamp);
-    return v.timestamp >= cutoff365 && (h >= 22 || h <= 4);
-  });
-  const sleepByDay365: Record<string, { lat: number; lon: number }> = {};
-  for (const v of overnightLast365) {
-    const dk = dayKey(v.timestamp);
-    if (!sleepByDay365[dk]) sleepByDay365[dk] = { lat: v.latitude, lon: v.longitude };
+  // Only meaningful if home location is known — auto-detected clusters across
+  // 10 years of data are unreliable; require user-set home for accuracy
+  let road_warrior: Segment;
+  if (!homeCoords && !homeCluster) {
+    road_warrior = {
+      id: 'road_warrior',
+      label: 'Road Warrior',
+      emoji: '✈️',
+      level: 'N',
+      description: 'Set your home location to track nights away',
+    };
+  } else {
+    const cutoff365 = now - (365 * 24 * 60 * 60 * 1000);
+    const homeLat365 = homeCoords?.lat ?? homeCluster!.lat;
+    const homeLon365 = homeCoords?.lon ?? homeCluster!.lon;
+    const overnightLast365 = visits.filter(v => {
+      const h = hour(v.timestamp);
+      return v.timestamp >= cutoff365 && (h >= 22 || h <= 4);
+    });
+    const sleepByDay365: Record<string, { lat: number; lon: number }> = {};
+    for (const v of overnightLast365) {
+      const dk = dayKey(v.timestamp);
+      if (!sleepByDay365[dk]) sleepByDay365[dk] = { lat: v.latitude, lon: v.longitude };
+    }
+    const nightsAway365 = Object.values(sleepByDay365).filter(
+      loc => haversineDistance(loc.lat, loc.lon, homeLat365, homeLon365) > 25
+    ).length;
+    road_warrior = {
+      id: 'road_warrior',
+      label: 'Road Warrior',
+      emoji: '✈️',
+      level: nightsAway365 >= 20 ? 'Y' : 'N',
+      description: nightsAway365 >= 20
+        ? `${nightsAway365} nights away from home in the last 12 months`
+        : `${nightsAway365} nights away from home in the last 12 months — mostly sleeps at home`,
+    };
   }
-  const homeLat365 = nightsData.homeLat ?? homeCluster?.lat ?? 0;
-  const homeLon365 = nightsData.homeLon ?? homeCluster?.lon ?? 0;
-  const nightsAway365 = homeLat365 ? Object.values(sleepByDay365).filter(
-    loc => haversineDistance(loc.lat, loc.lon, homeLat365, homeLon365) > 25
-  ).length : 0;
-
-  const road_warrior: Segment = {
-    id: 'road_warrior',
-    label: 'Road Warrior',
-    emoji: '✈️',
-    level: nightsAway365 >= 20 ? 'Y' : 'N',
-    description: nightsAway365 >= 20
-      ? `${nightsAway365} nights away from home in the last 12 months`
-      : `${nightsAway365} nights away from home in the last 12 months — mostly sleeps at home`,
-  };
 
   return [
     outofhome_dining,

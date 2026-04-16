@@ -9,7 +9,7 @@ import {
   TextInput,
 } from 'react-native';
 import LogoHeader from '../components/LogoHeader';
-import { isRefreshDue, getLastImport, getHomeLocation, getWorkLocation } from '../config/storage';
+import { isRefreshDue, getLastImport, getHomeLocation, getWorkLocation, saveHomeLocation, getPendingHomeLocation, clearPendingHomeLocation } from '../config/storage';
 import {
   getVisitCount,
   getTopActivities,
@@ -103,6 +103,7 @@ export default function HomeScreen({ navigation, route }: any) {
   const [recentActivity, setRecentActivity] = useState<{ name: string | null; category: string | null; timestamp: number; duration_minutes: number; activity: string }[]>([]);
   const [nightsAway, setNightsAway] = useState<number>(0);
   const [homeLocationSet, setHomeLocationSet] = useState<boolean>(true);
+  const [pendingHome, setPendingHome] = useState<{ lat: number; lon: number; label: string } | null>(null);
   const [importTimestamp, setImportTimestamp] = useState<number>(Date.now());
   const [timeAlloc7, setTimeAlloc7] = useState<TimeAllocation | null>(null);
   const [timeAlloc180, setTimeAlloc180] = useState<TimeAllocation | null>(null);
@@ -153,6 +154,14 @@ export default function HomeScreen({ navigation, route }: any) {
     const homeLoc = await getHomeLocation();
     const workLoc = await getWorkLocation();
     setHomeLocationSet(homeLoc !== null);
+
+    // Check for pending home detection from LocationSetupScreen
+    if (!homeLoc) {
+      const pending = await getPendingHomeLocation();
+      setPendingHome(pending);
+    } else {
+      setPendingHome(null);
+    }
     const due = await isRefreshDue(mostRecentTs);
     const last = await getLastImport();
     const importTs = await getLastImportTimestamp();
@@ -199,11 +208,16 @@ export default function HomeScreen({ navigation, route }: any) {
     const fun = await getFunStats();
     setFunStats(fun);
 
-    const since365 = (mostRecentTs || Date.now()) - (365 * 24 * 60 * 60 * 1000);
-    const nightsData = await getNightsAwayFromHome(homeLoc?.lat, homeLoc?.lon, since365);
-    setNightsAway(nightsData.nightsAway);
+    // Only calculate nights away if home location is set — otherwise meaningless
+    if (homeLoc) {
+      const since365 = (mostRecentTs || Date.now()) - (365 * 24 * 60 * 60 * 1000);
+      const nightsData = await getNightsAwayFromHome(homeLoc.lat, homeLoc.lon, since365);
+      setNightsAway(nightsData.nightsAway);
+    } else {
+      setNightsAway(0);
+    }
 
-    const segs = await computeSegments();
+    const segs = await computeSegments(homeLoc ?? undefined);
     setSegments(segs);
 
     const recent = await getRecentActivity(50);
@@ -218,6 +232,20 @@ export default function HomeScreen({ navigation, route }: any) {
     if (mostRecentTs > 0) {
       setMostRecentDataDate(new Date(mostRecentTs).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }));
     }
+  };
+
+  const handleConfirmPendingHome = async () => {
+    if (!pendingHome) return;
+    await saveHomeLocation(pendingHome);
+    await clearPendingHomeLocation();
+    setPendingHome(null);
+    setHomeLocationSet(true);
+    loadData(); // reload so nights away and segments update
+  };
+
+  const handleDismissPendingHome = async () => {
+    await clearPendingHomeLocation();
+    setPendingHome(null);
   };
 
   const totalHours = topActivities.reduce((sum: number, a: any) => sum + (a.hours || 0), 0);
@@ -280,7 +308,41 @@ export default function HomeScreen({ navigation, route }: any) {
               })}
             </View>
 
-            {!homeLocationSet && hasData && (
+            {/* Pending home detection banner — shown when we've detected but not confirmed */}
+            {pendingHome && hasData && (
+              <View style={styles.pendingHomeBanner}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pendingHomeTitle}>🏠 Is this your home?</Text>
+                  <Text style={styles.pendingHomeLocation}>{pendingHome.label}</Text>
+                </View>
+                <View style={styles.pendingHomeActions}>
+                  <TouchableOpacity
+                    style={styles.pendingHomeConfirm}
+                    onPress={handleConfirmPendingHome}
+                  >
+                    <Text style={styles.pendingHomeConfirmText}>✓ Yes</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.pendingHomeChange}
+                    onPress={() => {
+                      handleDismissPendingHome();
+                      navigation.navigate('LocationSetup', { type: 'home' });
+                    }}
+                  >
+                    <Text style={styles.pendingHomeChangeText}>Change</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.pendingHomeDismiss}
+                    onPress={handleDismissPendingHome}
+                  >
+                    <Text style={styles.pendingHomeDismissText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Fallback prompt when no pending detection and home not set */}
+            {!pendingHome && !homeLocationSet && hasData && (
               <TouchableOpacity
                 style={styles.locationPromptBanner}
                 onPress={() => navigation.navigate('LocationSetup', { type: 'home' })}
@@ -728,7 +790,7 @@ export default function HomeScreen({ navigation, route }: any) {
                     <View style={styles.funStatRow}>
                       <Text style={styles.funStatIcon}>🌙</Text>
                       <Text style={styles.funStatText}>
-                        You spent <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the last 12 months
+                        Road Warrior! <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the selected period
                       </Text>
                     </View>
                   )}
@@ -1871,5 +1933,64 @@ const styles = StyleSheet.create({
     color: '#1a3a5c',
     flex: 1,
     lineHeight: 20,
+  },
+  pendingHomeBanner: {
+    backgroundColor: '#eef4fb',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#1a3a5c',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+  },
+  pendingHomeTitle: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#1a3a5c',
+    marginBottom: 2,
+  },
+  pendingHomeLocation: {
+    fontSize: 14,
+    color: '#1a1a2e',
+    fontWeight: '500' as const,
+  },
+  pendingHomeActions: {
+    flexDirection: 'row' as const,
+    gap: 6,
+    alignItems: 'center' as const,
+  },
+  pendingHomeConfirm: {
+    backgroundColor: '#1a3a5c',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  pendingHomeConfirmText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold' as const,
+  },
+  pendingHomeChange: {
+    backgroundColor: '#f0f4f8',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  pendingHomeChangeText: {
+    color: '#1a1a2e',
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  pendingHomeDismiss: {
+    padding: 6,
+  },
+  pendingHomeDismissText: {
+    fontSize: 14,
+    color: '#aaa',
+    fontWeight: '600' as const,
   },
 });
