@@ -634,12 +634,13 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
-export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLon?: number): Promise<{
+export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLon?: number, sinceTimestamp?: number): Promise<{
   nightsAway: number;
   homeLat: number | null;
   homeLon: number | null;
 }> {
   const HOME_AWAY_MILES = 25;
+  const since = sinceTimestamp ?? 0;
   // Overnight hours: 10pm (22) through 5am (5 inclusive)
   const isOvernightHour = (hour: number) => hour >= 22 || hour <= 5;
 
@@ -648,6 +649,7 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
     if (visits.length === 0) return { nightsAway: 0, homeLat: null, homeLon: null };
 
     // Step 1: find home — most frequent overnight location cluster (1-decimal grid ≈ ~7mi)
+    // Always use full history for home detection, regardless of since filter
     const overnightVisits = visits.filter(v => {
       const hour = new Date(v.timestamp).getHours();
       return isOvernightHour(hour);
@@ -667,10 +669,10 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
       ? { lat: storedHomeLat, lon: storedHomeLon }
       : clusters[0];
 
-    // Step 2: use overnight records (10pm-4am) to find where user actually slept
+    // Step 2: use overnight records (10pm-4am) filtered to since window
     const overnightRecs = visits.filter(v => {
       const h = new Date(v.timestamp).getHours();
-      return h >= 22 || h <= 4;
+      return (h >= 22 || h <= 4) && v.timestamp >= since;
     });
     const sleepByDay: Record<string, { lat: number; lon: number }> = {};
     for (const v of overnightRecs) {
@@ -710,14 +712,16 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
   const homeLat = storedHomeLat ?? (overnightRows[0]?.clat as number);
   const homeLon = storedHomeLon ?? (overnightRows[0]?.clon as number);
 
-  // Step 2: use overnight records (10pm-4am) to find where user actually slept
+  // Step 2: use overnight records (10pm-4am) filtered to since window
   const lastPerDay = await database.getAllAsync(
     `SELECT latitude, longitude
      FROM visits
-     WHERE CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) >= 22
-        OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 4
+     WHERE (CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) >= 22
+        OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 4)
+       AND timestamp >= ?
      GROUP BY date(timestamp/1000, 'unixepoch', 'localtime')
-     ORDER BY timestamp ASC;`
+     ORDER BY timestamp ASC;`,
+    [since]
   ) as any[];
 
   // Haversine in JS on the small result set
@@ -1367,16 +1371,35 @@ export async function computeSegments(): Promise<Segment[]> {
   };
 
   // ── 16. Road warrior ─────────────────────────────────────────────────────
-  // Reuse nights away logic — count nights away in last 30 days
+  // Count nights away in last 365 days — meaningful annual context
+  const cutoff365 = now - (365 * 24 * 60 * 60 * 1000);
   const nightsData = await getNightsAwayFromHome();
+  // Filter to last 365 days only
+  const recentNightsAway = nightsData.nightsAway; // getNightsAwayFromHome already uses all visits; we'll use a separate count
+  // Use visits from last year to compute nights away
+  const overnightLast365 = visits.filter(v => {
+    const h = hour(v.timestamp);
+    return v.timestamp >= cutoff365 && (h >= 22 || h <= 4);
+  });
+  const sleepByDay365: Record<string, { lat: number; lon: number }> = {};
+  for (const v of overnightLast365) {
+    const dk = dayKey(v.timestamp);
+    if (!sleepByDay365[dk]) sleepByDay365[dk] = { lat: v.latitude, lon: v.longitude };
+  }
+  const homeLat365 = nightsData.homeLat ?? homeCluster?.lat ?? 0;
+  const homeLon365 = nightsData.homeLon ?? homeCluster?.lon ?? 0;
+  const nightsAway365 = homeLat365 ? Object.values(sleepByDay365).filter(
+    loc => haversineDistance(loc.lat, loc.lon, homeLat365, homeLon365) > 25
+  ).length : 0;
+
   const road_warrior: Segment = {
     id: 'road_warrior',
     label: 'Road Warrior',
     emoji: '✈️',
-    level: nightsData.nightsAway >= 3 ? 'Y' : 'N',
-    description: nightsData.nightsAway >= 3
-      ? `${nightsData.nightsAway} nights away from home in your data`
-      : 'Mostly sleeps at home',
+    level: nightsAway365 >= 20 ? 'Y' : 'N',
+    description: nightsAway365 >= 20
+      ? `${nightsAway365} nights away from home in the last 12 months`
+      : `${nightsAway365} nights away from home in the last 12 months — mostly sleeps at home`,
   };
 
   return [

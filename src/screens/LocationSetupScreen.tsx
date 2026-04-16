@@ -108,26 +108,25 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
     setSearching(true);
     setSearchResult(null);
     try {
-      // Try geocoding via the POI worker
+      // Photon is an open geocoding API backed by OpenStreetMap data,
+      // more permissive than Nominatim for mobile app usage
       const response = await fetch(
-        `https://lobo-poi.jkeenan.workers.dev/?geocode=${encodeURIComponent(searchQuery.trim())}`
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery.trim())}&limit=1&lang=en`
       );
       if (response.ok) {
         const data = await response.json();
-        if (data.lat && data.lng) {
-          setSearchResult({
-            lat: data.lat,
-            lon: data.lng,
-            label: data.address || data.name || searchQuery.trim(),
-          });
-        } else if (data.lat && data.lon) {
-          setSearchResult({
-            lat: data.lat,
-            lon: data.lon,
-            label: data.address || data.name || searchQuery.trim(),
-          });
+        const feature = data?.features?.[0];
+        if (feature) {
+          const [lon, lat] = feature.geometry.coordinates;
+          const p = feature.properties;
+          const parts = [
+            p.housenumber && p.street ? `${p.housenumber} ${p.street}` : p.street,
+            p.city || p.town || p.village,
+            p.state,
+          ].filter(Boolean);
+          const label = parts.length > 0 ? parts.join(', ') : (p.name || searchQuery.trim());
+          setSearchResult({ lat, lon, label });
         } else {
-          // Worker didn't return coords — show error
           setSearchResult({ lat: 0, lon: 0, label: '' });
         }
       } else {
@@ -252,16 +251,29 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
           <View style={styles.searchCard}>
             <Text style={styles.searchTitle}>Search for an address or place:</Text>
             <View style={styles.searchRow}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder={isHome ? 'e.g. 123 Main St, Nashville' : 'e.g. Acme Corp, Nashville'}
-                placeholderTextColor="#aaa"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onSubmitEditing={handleSearch}
-                autoCorrect={false}
-                returnKeyType="search"
-              />
+              <View style={styles.searchInputWrapper}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={isHome ? 'e.g. 123 Main St, Nashville' : 'e.g. Acme Corp, Nashville'}
+                  placeholderTextColor="#aaa"
+                  value={searchQuery}
+                  onChangeText={(text) => {
+                    setSearchQuery(text);
+                    if (!text) setSearchResult(null);
+                  }}
+                  onSubmitEditing={handleSearch}
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.searchClear}
+                    onPress={() => { setSearchQuery(''); setSearchResult(null); }}
+                  >
+                    <Text style={styles.searchClearText}>✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <TouchableOpacity style={styles.searchBtn} onPress={handleSearch} disabled={searching}>
                 {searching
                   ? <ActivityIndicator size="small" color="#ffffff" />
@@ -338,11 +350,17 @@ const styles = StyleSheet.create({
   searchCard: { backgroundColor: '#f0f4f8', borderRadius: 14, padding: 16, marginBottom: 16 },
   searchTitle: { fontSize: 14, fontWeight: '600', color: '#1a1a2e', marginBottom: 10 },
   searchRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  searchInputWrapper: { flex: 1, position: 'relative', justifyContent: 'center' },
   searchInput: {
     flex: 1, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 14,
     paddingVertical: 10, fontSize: 14, color: '#1a1a2e',
-    borderWidth: 1, borderColor: '#ddd',
+    borderWidth: 1, borderColor: '#ddd', paddingRight: 36,
   },
+  searchClear: {
+    position: 'absolute', right: 10, top: 0, bottom: 0,
+    justifyContent: 'center', paddingHorizontal: 4,
+  },
+  searchClearText: { fontSize: 14, color: '#999', fontWeight: '600' },
   searchBtn: { backgroundColor: '#1a3a5c', borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' },
   searchBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   resultCard: { backgroundColor: '#fff', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#ddd' },

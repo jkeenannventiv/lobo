@@ -199,7 +199,8 @@ export default function HomeScreen({ navigation, route }: any) {
     const fun = await getFunStats();
     setFunStats(fun);
 
-    const nightsData = await getNightsAwayFromHome(homeLoc?.lat, homeLoc?.lon);
+    const since365 = (mostRecentTs || Date.now()) - (365 * 24 * 60 * 60 * 1000);
+    const nightsData = await getNightsAwayFromHome(homeLoc?.lat, homeLoc?.lon, since365);
     setNightsAway(nightsData.nightsAway);
 
     const segs = await computeSegments();
@@ -727,7 +728,7 @@ export default function HomeScreen({ navigation, route }: any) {
                     <View style={styles.funStatRow}>
                       <Text style={styles.funStatIcon}>🌙</Text>
                       <Text style={styles.funStatText}>
-                        Road Warrior! <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the selected period
+                        You spent <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the last 12 months
                       </Text>
                     </View>
                   )}
