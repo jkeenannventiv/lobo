@@ -19,6 +19,8 @@ import {
   clearHomeLocation,
   clearWorkLocation,
   savePendingHomeLocation,
+  getPendingHomeLocation,
+  clearPendingHomeLocation,
   SavedLocation,
 } from '../config/storage';
 import { lookupByCoords } from '../config/poi';
@@ -53,6 +55,18 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
     const existing = isHome ? await getHomeLocation() : await getWorkLocation();
     setCurrent(existing);
 
+    // If there's already a pending detection (user tapped Change from banner),
+    // just show the editing UI — don't re-detect and navigate back
+    if (isHome && !existing) {
+      const pending = await getPendingHomeLocation();
+      if (pending) {
+        setDetected(pending);
+        setEditing(true);
+        setLoading(false);
+        return;
+      }
+    }
+
     // Auto-detect from visit data
     try {
       const visits = await getAllVisits();
@@ -63,8 +77,6 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
         const recentVisits = visits.filter(v => v.timestamp >= cutoff90);
         const source90 = recentVisits.length >= 10 ? recentVisits : visits;
 
-        // For home: use most frequent overnight location in recent data
-        // For work: use most frequent weekday 8am-6pm location in recent data
         const filtered = source90.filter(v => {
           const h = new Date(v.timestamp).getHours();
           const dow = new Date(v.timestamp).getDay();
@@ -81,7 +93,6 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
         }
         const top = Object.values(clusters).sort((a, b) => b.count - a.count)[0];
         if (top) {
-          // Reverse geocode to get a readable label
           const poi = await lookupByCoords(top.lat, top.lon);
           const label = poi.address
             ? poi.address.split(',').slice(-3).join(',').trim()
@@ -89,8 +100,8 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
           const detectedLoc = { lat: top.lat, lon: top.lon, label };
           setDetected(detectedLoc);
 
-          // For home with no existing location: save as pending so HomeScreen
-          // can show the inline confirmation banner instead of this screen
+          // For home with no existing location: save as pending and go back
+          // so HomeScreen shows the inline confirmation banner
           if (isHome && !existing) {
             await savePendingHomeLocation(detectedLoc);
             navigation.goBack();
@@ -170,10 +181,14 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
   };
 
   const handleSaveSearch = async () => {
-    if (!searchResult) return;
+    if (!searchResult || searchResult.lat === 0) return;
     const loc = searchResult;
-    if (isHome) await saveHomeLocation(loc);
-    else await saveWorkLocation(loc);
+    if (isHome) {
+      await saveHomeLocation(loc);
+      await clearPendingHomeLocation();
+    } else {
+      await saveWorkLocation(loc);
+    }
     setSaved(true);
     setTimeout(() => navigation.goBack(), 1000);
   };

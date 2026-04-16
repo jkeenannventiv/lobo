@@ -322,10 +322,7 @@ export default function HomeScreen({ navigation, route }: any) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.pendingHomeChange}
-                    onPress={() => {
-                      handleDismissPendingHome();
-                      navigation.navigate('LocationSetup', { type: 'home' });
-                    }}
+                    onPress={() => navigation.navigate('LocationSetup', { type: 'home' })}
                   >
                     <Text style={styles.pendingHomeChangeText}>Change</Text>
                   </TouchableOpacity>
@@ -381,57 +378,111 @@ export default function HomeScreen({ navigation, route }: any) {
                   </View>
                 )}
 
-                {topActivities.length > 0 && (
+                {/* About You */}
+                {hasData && (
                   <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Activity Breakdown</Text>
-
-                    <View style={styles.barChart}>
-                      {topActivities.map((item: any, idx: number) => {
-                        const pct = totalHours > 0 ? Math.round((item.hours / totalHours) * 100) : 0;
-                        const color = ACTIVITY_COLORS[item.activity] || '#a0aec0';
-                        const hrs = item.hours || 0;
-                        return (
-                          <View key={idx} style={styles.barRow}>
-                            <View style={styles.barLabelRow}>
-                              <View style={[styles.barDot, { backgroundColor: color }]} />
-                              <Text style={styles.barLabel}>
-                                {cleanActivityLabel(item.activity)}
-                              </Text>
-                              <Text style={styles.barPct}>{pct}%</Text>
-                              <Text style={styles.barCount}>
-                                {hrs.toLocaleString()}h
-                              </Text>
-                            </View>
-                            <View style={styles.barTrack}>
-                              <View
-                                style={[
-                                  styles.barFill,
-                                  { width: `${pct}%`, backgroundColor: color },
-                                ]}
-                              />
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
+                    <Text style={styles.cardTitle}>About You</Text>
+                    {funStats.daysDataSpans > 0 && (
+                      <View style={styles.funStatRow}>
+                        <Text style={styles.funStatIcon}>📊</Text>
+                        <Text style={styles.funStatText}>
+                          Your data spans <Text style={styles.funStatHighlight}>{funStats.daysDataSpans} days</Text> of movement history
+                        </Text>
+                      </View>
+                    )}
+                    {funStats.hoursInCar > 0 && funStats.daysDataSpans > 0 && (() => {
+                      const yearsSpan = funStats.daysDataSpans / 365;
+                      const hrsPerYear = Math.round(funStats.hoursInCar / yearsSpan);
+                      const hrsPerDay = (funStats.hoursInCar / funStats.daysDataSpans).toFixed(1);
+                      const showPerYear = funStats.daysDataSpans > 60;
+                      return (
+                        <View style={styles.funStatRow}>
+                          <Text style={styles.funStatIcon}>🚗</Text>
+                          <Text style={styles.funStatText}>
+                            {showPerYear
+                              ? <>You average <Text style={styles.funStatHighlight}>{hrsPerYear} hours per year</Text> in your car — about <Text style={styles.funStatHighlight}>{hrsPerDay} hrs/day</Text></>
+                              : <>You've spent <Text style={styles.funStatHighlight}>{funStats.hoursInCar.toLocaleString()} hours</Text> in your car</>
+                            }
+                          </Text>
+                        </View>
+                      );
+                    })()}
+                    {funStats.uniquePlaces > 0 && (
+                      <View style={styles.funStatRow}>
+                        <Text style={styles.funStatIcon}>📍</Text>
+                        <Text style={styles.funStatText}>
+                          You've visited <Text style={styles.funStatHighlight}>{funStats.uniquePlaces} unique places</Text> in your history
+                        </Text>
+                      </View>
+                    )}
+                    {funStats.mostVisitedDay !== '' && (
+                      <View style={styles.funStatRow}>
+                        <Text style={styles.funStatIcon}>📅</Text>
+                        <Text style={styles.funStatText}>
+                          <Text style={styles.funStatHighlight}>{funStats.mostVisitedDay}</Text> is your most active day for getting out
+                        </Text>
+                      </View>
+                    )}
+                    {funStats.mostVisitedTime !== '' && (
+                      <View style={styles.funStatRow}>
+                        <Text style={styles.funStatIcon}>⏰</Text>
+                        <Text style={styles.funStatText}>
+                          Based on your patterns you're a <Text style={styles.funStatHighlight}>{funStats.mostVisitedTime}</Text>
+                        </Text>
+                      </View>
+                    )}
+                    {funStats.avgTripsPerWeek > 0 && (
+                      <View style={styles.funStatRow}>
+                        <Text style={styles.funStatIcon}>🗺️</Text>
+                        <Text style={styles.funStatText}>
+                          You average <Text style={styles.funStatHighlight}>{funStats.avgTripsPerWeek} trips per week</Text>
+                        </Text>
+                      </View>
+                    )}
+                    {nightsAway > 0 && (
+                      <View style={styles.funStatRow}>
+                        <Text style={styles.funStatIcon}>🌙</Text>
+                        <Text style={styles.funStatText}>
+                          You spent <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the last 12 months
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
 
-                {timeAlloc7 && timeAlloc7.totalHours > 0 ? (
+                {/* Your Profile */}
+                {segments.length > 0 && (
                   <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Where You Spend Your Time</Text>
-                    <Text style={styles.cardSubtitle}>{TIME_RANGES[selectedRange].label === 'All' ? 'All time' : `Most Recent ${TIME_RANGES[selectedRange].label}`} vs 6-month avg</Text>
-                    <TimeAllocationChart alloc7={timeAlloc7} alloc180={timeAlloc180} rangeLabel={TIME_RANGES[selectedRange].label} />
+                    <Text style={styles.cardTitle}>Your Profile</Text>
+                    {segments.map((seg, idx) => {
+                      const isYN = seg.level === 'Y' || seg.level === 'N';
+                      const levelColor =
+                        seg.level === 'H' || seg.level === 'Y' ? '#e94560'
+                        : seg.level === 'M' ? '#d69e2e'
+                        : seg.level === 'L' || seg.level === 'N' ? '#a0aec0'
+                        : '#a0aec0';
+                      const levelLabel = isYN
+                        ? (seg.level === 'Y' ? 'Yes' : 'No')
+                        : seg.level;
+                      return (
+                        <View key={idx} style={styles.segmentRow}>
+                          <Text style={styles.segmentEmoji}>{seg.emoji}</Text>
+                          <View style={styles.segmentInfo}>
+                            <View style={styles.segmentHeader}>
+                              <Text style={styles.segmentLabel}>{seg.label}</Text>
+                              <View style={[styles.segmentBadge, { backgroundColor: levelColor }]}>
+                                <Text style={styles.segmentBadgeText}>{levelLabel}</Text>
+                              </View>
+                            </View>
+                            <Text style={styles.segmentDesc}>{seg.description}</Text>
+                          </View>
+                        </View>
+                      );
+                    })}
                   </View>
-                ) : (topActivities.length > 0 && hasData) ? (
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Where You Spend Your Time</Text>
-                    <Text style={{ color: '#555570', fontSize: 14, lineHeight: 22 }}>
-                      No location data found for this period. Try a wider time range or tap <Text style={{ fontWeight: 'bold', color: '#1a3a5c' }}>Refresh Data</Text>.
-                    </Text>
-                  </View>
-                ) : null}
+                )}
 
+                {/* Top Place Categories */}
                 {filteredCategories.length > 0 && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Top Place Categories</Text>
@@ -465,6 +516,7 @@ export default function HomeScreen({ navigation, route }: any) {
                   </View>
                 )}
 
+                {/* Top Places Visited */}
                 {filteredPlaces.length > 0 && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Top Places Visited</Text>
@@ -484,7 +536,6 @@ export default function HomeScreen({ navigation, route }: any) {
                     ))}
                   </View>
                 )}
-
 
               </>
             )}
@@ -616,68 +667,121 @@ export default function HomeScreen({ navigation, route }: any) {
                   ))}
                 </View>
 
+                {/* Where You Spend Your Time */}
+                {timeAlloc7 && timeAlloc7.totalHours > 0 ? (
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Where You Spend Your Time</Text>
+                    <Text style={styles.cardSubtitle}>{TIME_RANGES[selectedRange].label === 'All' ? 'All time' : `Most Recent ${TIME_RANGES[selectedRange].label}`} vs 6-month avg</Text>
+                    <TimeAllocationChart alloc7={timeAlloc7} alloc180={timeAlloc180} rangeLabel={TIME_RANGES[selectedRange].label} />
+                  </View>
+                ) : hasData ? (
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Where You Spend Your Time</Text>
+                    <Text style={{ color: '#555570', fontSize: 14, lineHeight: 22 }}>
+                      No location data found for this period. Try a wider time range or tap <Text style={{ fontWeight: 'bold', color: '#1a3a5c' }}>Refresh Data</Text>.
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* Activity Breakdown */}
+                {topActivities.length > 0 && (
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Activity Breakdown</Text>
+                    <View style={styles.barChart}>
+                      {topActivities.map((item: any, idx: number) => {
+                        const pct = totalHours > 0 ? Math.round((item.hours / totalHours) * 100) : 0;
+                        const color = ACTIVITY_COLORS[item.activity] || '#a0aec0';
+                        const hrs = item.hours || 0;
+                        return (
+                          <View key={idx} style={styles.barRow}>
+                            <View style={styles.barLabelRow}>
+                              <View style={[styles.barDot, { backgroundColor: color }]} />
+                              <Text style={styles.barLabel}>
+                                {cleanActivityLabel(item.activity)}
+                              </Text>
+                              <Text style={styles.barPct}>{pct}%</Text>
+                              <Text style={styles.barCount}>
+                                {hrs.toLocaleString()}h
+                              </Text>
+                            </View>
+                            <View style={styles.barTrack}>
+                              <View
+                                style={[
+                                  styles.barFill,
+                                  { width: `${pct}%`, backgroundColor: color },
+                                ]}
+                              />
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
                 {totalStats.totalMiles === 0 && totalStats.totalHoursDriving === 0 && hasData && (
                   <View style={[styles.card, { marginBottom: 16 }]}>
-                    <Text style={styles.cardTitle}>No Data in This Period</Text>
+                    <Text style={styles.cardTitle}>No Driving Data in This Period</Text>
                     <Text style={{ color: '#555570', fontSize: 14, lineHeight: 22 }}>
                       No driving data found for this period. Try a wider range or refresh your data.
                     </Text>
                   </View>
                 )}
 
-                <View style={styles.statRow}>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
-                      {totalStats.totalMiles.toLocaleString()}
-                    </Text>
-                    <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false}>Miles</Text>
-                  </View>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
-                      {totalStats.totalHoursDriving.toLocaleString()}
-                    </Text>
-                    <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Hrs Driven</Text>
-                  </View>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
-                      {totalStats.longestTrip > 0 ? `${totalStats.longestTrip}m` : '—'}
-                    </Text>
-                    <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Longest Trip</Text>
-                  </View>
-                </View>
-                {totalStats.avgMilesPerTrip > 0 && (
-                  <View style={[styles.statRow, { marginBottom: 16 }]}>
-                    <View style={[styles.statCard, { flex: 1 }]}>
-                      <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
-                        {totalStats.avgMilesPerTrip > 0 ? totalStats.avgMilesPerTrip.toFixed(1) : '—'}
-                      </Text>
-                      <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Avg Mi/Trip</Text>
+                {totalStats.totalMiles > 0 && (
+                  <>
+                    <View style={styles.statRow}>
+                      <View style={styles.statCard}>
+                        <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
+                          {totalStats.totalMiles.toLocaleString()}
+                        </Text>
+                        <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false}>Miles</Text>
+                      </View>
+                      <View style={styles.statCard}>
+                        <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
+                          {totalStats.totalHoursDriving.toLocaleString()}
+                        </Text>
+                        <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Hrs Driven</Text>
+                      </View>
+                      <View style={styles.statCard}>
+                        <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
+                          {totalStats.longestTrip > 0 ? `${totalStats.longestTrip}m` : '—'}
+                        </Text>
+                        <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Longest Trip</Text>
+                      </View>
                     </View>
-                  </View>
+                    {totalStats.avgMilesPerTrip > 0 && (
+                      <View style={[styles.statRow, { marginBottom: 16 }]}>
+                        <View style={[styles.statCard, { flex: 1 }]}>
+                          <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
+                            {totalStats.avgMilesPerTrip.toFixed(1)}
+                          </Text>
+                          <Text style={styles.statLabel} numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}>Avg Mi/Trip</Text>
+                        </View>
+                      </View>
+                    )}
+                  </>
                 )}
 
+                {/* Miles Driven by Month */}
                 {monthlyDistance.length > 0 && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Miles Driven by Month</Text>
-                    {monthlyDistance.length > 0 && (() => {
+                    {(() => {
                       const maxMiles = monthlyDistance.reduce((max, d) => Math.max(max, d.miles), 1);
                       const midMiles = Math.round(maxMiles / 2);
                       const fmtMiles = (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : `${v}`;
                       return (
                         <View style={styles.axisChartContainer}>
-                          {/* Y-axis labels */}
                           <View style={styles.yAxis}>
                             <Text style={styles.yAxisLabel} allowFontScaling={false}>{fmtMiles(maxMiles)}</Text>
                             <Text style={styles.yAxisLabel} allowFontScaling={false}>{fmtMiles(midMiles)}</Text>
                             <Text style={styles.yAxisLabel} allowFontScaling={false}>0</Text>
                           </View>
-                          {/* Chart area */}
                           <View style={styles.axisChartArea}>
-                            {/* Grid lines */}
                             <View style={styles.gridLineTop} />
                             <View style={styles.gridLineMid} />
                             <View style={styles.gridLineBottom} />
-                            {/* Bars */}
                             <View style={styles.barChartVertical}>
                               {monthlyDistance.map((item, idx) => (
                                 <View key={idx} style={styles.verticalBarCol}>
@@ -698,6 +802,7 @@ export default function HomeScreen({ navigation, route }: any) {
                   </View>
                 )}
 
+                {/* Most Time Spent */}
                 {topByDuration.length > 0 && (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Most Time Spent</Text>
@@ -718,106 +823,6 @@ export default function HomeScreen({ navigation, route }: any) {
                           <Text style={styles.placeCount}>
                             {hours > 0 ? `${hours}h ${mins}m` : `${mins}m`}
                           </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>About You</Text>
-                  {funStats.daysDataSpans > 0 && (
-                    <View style={styles.funStatRow}>
-                      <Text style={styles.funStatIcon}>📊</Text>
-                      <Text style={styles.funStatText}>
-                        Your data spans <Text style={styles.funStatHighlight}>{funStats.daysDataSpans} days</Text> of movement history — the stats below cover your full history
-                      </Text>
-                    </View>
-                  )}
-                  {funStats.hoursInCar > 0 && funStats.daysDataSpans > 0 && (() => {
-                    const yearsSpan = funStats.daysDataSpans / 365;
-                    const hrsPerYear = Math.round(funStats.hoursInCar / yearsSpan);
-                    const hrsPerDay = (funStats.hoursInCar / funStats.daysDataSpans).toFixed(1);
-                    const showPerYear = funStats.daysDataSpans > 60;
-                    return (
-                      <View style={styles.funStatRow}>
-                        <Text style={styles.funStatIcon}>🚗</Text>
-                        <Text style={styles.funStatText}>
-                          {showPerYear
-                            ? <>You average <Text style={styles.funStatHighlight}>{hrsPerYear} hours per year</Text> in your car — about <Text style={styles.funStatHighlight}>{hrsPerDay} hrs/day</Text></>
-                            : <>You've spent <Text style={styles.funStatHighlight}>{funStats.hoursInCar.toLocaleString()} hours</Text> in your car</>
-                          }
-                        </Text>
-                      </View>
-                    );
-                  })()}
-                  {funStats.uniquePlaces > 0 && (
-                    <View style={styles.funStatRow}>
-                      <Text style={styles.funStatIcon}>📍</Text>
-                      <Text style={styles.funStatText}>
-                        You've visited <Text style={styles.funStatHighlight}>{funStats.uniquePlaces} unique places</Text> in your history
-                      </Text>
-                    </View>
-                  )}
-                  {funStats.mostVisitedDay !== '' && (
-                    <View style={styles.funStatRow}>
-                      <Text style={styles.funStatIcon}>📅</Text>
-                      <Text style={styles.funStatText}>
-                        <Text style={styles.funStatHighlight}>{funStats.mostVisitedDay}</Text> is your most active day for getting out
-                      </Text>
-                    </View>
-                  )}
-                  {funStats.mostVisitedTime !== '' && (
-                    <View style={styles.funStatRow}>
-                      <Text style={styles.funStatIcon}>⏰</Text>
-                      <Text style={styles.funStatText}>
-                        Based on your patterns you're a <Text style={styles.funStatHighlight}>{funStats.mostVisitedTime}</Text>
-                      </Text>
-                    </View>
-                  )}
-                  {funStats.avgTripsPerWeek > 0 && (
-                    <View style={styles.funStatRow}>
-                      <Text style={styles.funStatIcon}>🗺️</Text>
-                      <Text style={styles.funStatText}>
-                        You average <Text style={styles.funStatHighlight}>{funStats.avgTripsPerWeek} trips per week</Text>
-                      </Text>
-                    </View>
-                  )}
-                  {nightsAway > 0 && (
-                    <View style={styles.funStatRow}>
-                      <Text style={styles.funStatIcon}>🌙</Text>
-                      <Text style={styles.funStatText}>
-                        You spent <Text style={styles.funStatHighlight}>{nightsAway} night{nightsAway !== 1 ? 's' : ''} away from home</Text> in the last 12 months
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                {segments.length > 0 && (
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Your Profile</Text>
-                    {segments.map((seg, idx) => {
-                      const isYN = seg.level === 'Y' || seg.level === 'N';
-                      const levelColor =
-                        seg.level === 'H' || seg.level === 'Y' ? '#e94560'
-                        : seg.level === 'M' ? '#d69e2e'
-                        : seg.level === 'L' || seg.level === 'N' ? '#a0aec0'
-                        : '#a0aec0';
-                      const levelLabel = isYN
-                        ? (seg.level === 'Y' ? 'Yes' : 'No')
-                        : seg.level;
-                      return (
-                        <View key={idx} style={styles.segmentRow}>
-                          <Text style={styles.segmentEmoji}>{seg.emoji}</Text>
-                          <View style={styles.segmentInfo}>
-                            <View style={styles.segmentHeader}>
-                              <Text style={styles.segmentLabel}>{seg.label}</Text>
-                              <View style={[styles.segmentBadge, { backgroundColor: levelColor }]}>
-                                <Text style={styles.segmentBadgeText}>{levelLabel}</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.segmentDesc}>{seg.description}</Text>
-                          </View>
                         </View>
                       );
                     })}

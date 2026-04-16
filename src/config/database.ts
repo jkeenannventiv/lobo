@@ -642,7 +642,7 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
   const HOME_AWAY_MILES = 25;
   const since = sinceTimestamp ?? 0;
   // Overnight hours: 10pm (22) through 5am (5 inclusive)
-  const isOvernightHour = (hour: number) => hour >= 22 || hour <= 5;
+  const isOvernightHour = (hour: number) => hour >= 22 || hour <= 4;
 
   if (isWeb) {
     const visits = await getAllVisits();
@@ -700,7 +700,7 @@ export async function getNightsAwayFromHome(storedHomeLat?: number, storedHomeLo
        COUNT(*) as cnt
      FROM visits
      WHERE CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) >= 22
-        OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 5
+        OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 4
      GROUP BY clat, clon
      ORDER BY cnt DESC
      LIMIT 1;`
@@ -1468,7 +1468,7 @@ export async function getTimeAllocation(
     let homeLat = homeCoords?.lat ?? 0;
     let homeLon = homeCoords?.lon ?? 0;
     if (!homeCoords) {
-      const overnight = visits.filter(v => { const h = new Date(v.timestamp).getHours(); return h >= 22 || h <= 5; });
+      const overnight = visits.filter(v => { const h = new Date(v.timestamp).getHours(); return h >= 22 || h <= 4; });
       const sourceVisits = overnight.length >= 5 ? overnight : visits;
       const homeClusters: Record<string, { lat: number; lon: number; count: number }> = {};
       for (const v of sourceVisits) {
@@ -1549,7 +1549,7 @@ export async function getTimeAllocation(
       `SELECT ROUND(latitude, 1) as clat, ROUND(longitude, 1) as clon, COUNT(*) as cnt
        FROM visits
        WHERE CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) >= 22
-          OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 5
+          OR CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) <= 4
        GROUP BY clat, clon ORDER BY cnt DESC LIMIT 1;`
     ) as any[];
     if (overnightRows.length === 0) {
