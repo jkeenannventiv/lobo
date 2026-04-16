@@ -68,6 +68,7 @@ export const CATEGORY_MAPPINGS: CategoryMapping[] = [
   { name: 'Freddy\'s',          match_type: 'prefix', category: 'Restaurants',       subcategory: 'Fast Food' },
 
   // ── Cafes / Coffee ─────────────────────────────────────────────────────────
+  { name: 'Starbucks Coffee Company', match_type: 'exact',   category: 'Restaurants', subcategory: 'Cafe' },
   { name: 'Starbucks',          match_type: 'prefix', category: 'Restaurants',       subcategory: 'Cafe' },
   { name: 'Dunkin',             match_type: 'prefix', category: 'Restaurants',       subcategory: 'Cafe' },
   { name: 'Dutch Bros',         match_type: 'prefix', category: 'Restaurants',       subcategory: 'Cafe' },
@@ -462,6 +463,13 @@ const NAME_KEYWORD_RULES: KeywordRule[] = [
     subcategory: null,
   },
 
+  // Parks & Outdoors — must come before medical to prevent trail/park misclassification
+  {
+    keywords: ['park', 'trail', 'greenway', 'nature preserve', 'nature center', 'state park', 'national park', 'recreation area', 'campground', 'campsite', 'boat ramp', 'lake', 'reservoir', 'river walk', 'riverwalk', 'greenway', 'arboretum', 'preserve'],
+    category: 'Entertainment',
+    subcategory: 'Parks & Outdoors',
+  },
+
   // Pharmacy / Health
   {
     keywords: ['pharmacy', 'drug store', 'drugstore', 'apothecary'],
@@ -589,9 +597,16 @@ const GOOGLE_CATEGORY_MAP: Record<string, { category: string; subcategory: strin
   'primary school':          { category: 'Education',        subcategory: null },
   'secondary school':        { category: 'Education',        subcategory: null },
   'high school':             { category: 'Education',        subcategory: null },
+  'middle school':           { category: 'Education',        subcategory: null },
+  'elementary school':       { category: 'Education',        subcategory: null },
   'university':              { category: 'Education',        subcategory: null },
   'college':                 { category: 'Education',        subcategory: null },
   'preschool':               { category: 'Education',        subcategory: null },
+  'park':                    { category: 'Entertainment',    subcategory: 'Parks & Outdoors' },
+  'national park':           { category: 'Entertainment',    subcategory: 'Parks & Outdoors' },
+  'campground':              { category: 'Entertainment',    subcategory: 'Parks & Outdoors' },
+  'natural feature':         { category: 'Entertainment',    subcategory: 'Parks & Outdoors' },
+  'tourist attraction':      { category: 'Entertainment',    subcategory: 'Attractions' },
   'cafe':                    { category: 'Restaurants',      subcategory: 'Cafe' },
   'coffee shop':             { category: 'Restaurants',      subcategory: 'Cafe' },
   'bakery':                  { category: 'Restaurants',      subcategory: 'Cafe' },

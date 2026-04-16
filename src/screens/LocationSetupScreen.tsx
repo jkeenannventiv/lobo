@@ -7,6 +7,7 @@ import {
   TextInput,
   ActivityIndicator,
   ScrollView,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import LogoHeader from '../components/LogoHeader';
@@ -55,16 +56,22 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
     try {
       const visits = await getAllVisits();
       if (visits.length > 0) {
-        // For home: use most frequent overnight location
-        // For work: use most frequent weekday 8am-6pm location
-        const filtered = visits.filter(v => {
+        // Weight detection to recent 90 days first, fall back to all-time
+        const now = Date.now();
+        const cutoff90 = now - (90 * 24 * 60 * 60 * 1000);
+        const recentVisits = visits.filter(v => v.timestamp >= cutoff90);
+        const source90 = recentVisits.length >= 10 ? recentVisits : visits;
+
+        // For home: use most frequent overnight location in recent data
+        // For work: use most frequent weekday 8am-6pm location in recent data
+        const filtered = source90.filter(v => {
           const h = new Date(v.timestamp).getHours();
           const dow = new Date(v.timestamp).getDay();
           if (isHome) return h >= 22 || h <= 5;
           return dow >= 1 && dow <= 5 && h >= 8 && h < 18;
         });
 
-        const source = filtered.length >= 5 ? filtered : visits;
+        const source = filtered.length >= 5 ? filtered : source90;
         const clusters: Record<string, { lat: number; lon: number; count: number }> = {};
         for (const v of source) {
           const key = `${v.latitude.toFixed(1)},${v.longitude.toFixed(1)}`;
@@ -101,8 +108,9 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
     setSearching(true);
     setSearchResult(null);
     try {
+      // Try geocoding via the POI worker
       const response = await fetch(
-        `https://lobo-poi.jkeenan.workers.dev/?search=${encodeURIComponent(searchQuery.trim())}`
+        `https://lobo-poi.jkeenan.workers.dev/?geocode=${encodeURIComponent(searchQuery.trim())}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -110,15 +118,23 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
           setSearchResult({
             lat: data.lat,
             lon: data.lng,
-            label: data.address || searchQuery.trim(),
+            label: data.address || data.name || searchQuery.trim(),
+          });
+        } else if (data.lat && data.lon) {
+          setSearchResult({
+            lat: data.lat,
+            lon: data.lon,
+            label: data.address || data.name || searchQuery.trim(),
           });
         } else {
-          // Fall back — use coords lookup via address text as label only
-          setSearchResult({ lat: 0, lon: 0, label: searchQuery.trim() });
+          // Worker didn't return coords — show error
+          setSearchResult({ lat: 0, lon: 0, label: '' });
         }
+      } else {
+        setSearchResult({ lat: 0, lon: 0, label: '' });
       }
     } catch {
-      setSearchResult({ lat: 0, lon: 0, label: searchQuery.trim() });
+      setSearchResult({ lat: 0, lon: 0, label: '' });
     }
     setSearching(false);
   };
@@ -173,7 +189,12 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
   return (
     <View style={styles.container}>
       <LogoHeader />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
@@ -249,13 +270,20 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
 
-            {searchResult && (
+            {searchResult && searchResult.lat !== 0 && (
               <View style={styles.resultCard}>
                 <Text style={styles.resultLabel}>Found:</Text>
                 <Text style={styles.resultAddress}>{searchResult.label}</Text>
                 <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveSearch}>
                   <Text style={styles.confirmBtnText}>✓ Save This Location</Text>
                 </TouchableOpacity>
+              </View>
+            )}
+            {searchResult && searchResult.lat === 0 && (
+              <View style={[styles.resultCard, { borderColor: '#e94560' }]}>
+                <Text style={{ color: '#e94560', fontSize: 14 }}>
+                  Address not found. Try being more specific — include city and state.
+                </Text>
               </View>
             )}
           </View>
@@ -268,6 +296,7 @@ export default function LocationSetupScreen({ navigation, route }: Props) {
         )}
 
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }

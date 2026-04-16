@@ -398,7 +398,7 @@ export default function HomeScreen({ navigation, route }: any) {
                           <Text style={styles.activityCount}>{item.count} visits {drillCategory === item.category ? '▲' : '▼'}</Text>
                         </View>
                         {drillCategory === item.category && (
-                          <DrillDown category={item.category} days={TIME_RANGES[selectedRange].days} />
+                          <DrillDown category={item.category} days={TIME_RANGES[selectedRange].days} importTimestamp={importTimestamp} mostRecentTs={mostRecentTs} />
                         )}
                       </TouchableOpacity>
                     ))}
@@ -1183,15 +1183,14 @@ const pieStyles = StyleSheet.create({
   },
 });
 
-function DrillDown({ category, days }: { category: string; days: number }) {
+function DrillDown({ category, days, importTimestamp, mostRecentTs }: { category: string; days: number; importTimestamp: number; mostRecentTs: number }) {
   const [places, setPlaces] = useState<{ name: string; count: number; totalMinutes: number; lastVisit: number }[]>([]);
-
   useEffect(() => {
     import('../config/database').then(({ getCategoryVisits }) => {
-      getCategoryVisits(category, days).then(setPlaces);
+      getCategoryVisits(category, days, importTimestamp, mostRecentTs).then(setPlaces);
     });
-  }, [category, days]);
-
+  }, [category, days, importTimestamp, mostRecentTs]);
+  
   if (places.length === 0) return (
     <View style={drillStyles.container}>
       <Text style={drillStyles.empty}>No named places found in this category yet. Try refreshing your data to enrich more locations.</Text>
