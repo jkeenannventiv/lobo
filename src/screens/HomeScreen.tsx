@@ -217,7 +217,7 @@ export default function HomeScreen({ navigation, route }: any) {
       setNightsAway(0);
     }
 
-    const segs = await computeSegments(homeLoc ? { lat: homeLoc.lat, lon: homeLoc.lon } : null);
+    const segs = await computeSegments(homeLoc ? { lat: homeLoc.lat, lon: homeLoc.lon } : null, days);
     setSegments(segs);
 
     const recent = await getRecentActivity(50);

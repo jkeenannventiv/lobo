@@ -397,7 +397,7 @@ export async function getVisitsByDayOfWeek(days = 36500, importTimestamp?: numbe
   const database = await getDb();
   if (!database) return dayNames.map(day => ({ day, count: 0 }));
   const results = await database.getAllAsync(
-    `SELECT CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+    `SELECT CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as dow,
      COUNT(*) as count FROM visits WHERE activity = 'Visit' AND timestamp >= ?
      GROUP BY dow ORDER BY dow;`,
     [cutoff]
@@ -430,7 +430,7 @@ export async function getVisitsByTimeOfDay(days = 36500, importTimestamp?: numbe
   const database = await getDb();
   if (!database) return periods.map(period => ({ period, count: 0 }));
   const results = await database.getAllAsync(
-    `SELECT CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+    `SELECT CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as hour,
      COUNT(*) as count FROM visits WHERE activity = 'Visit' AND timestamp >= ?
      GROUP BY hour ORDER BY hour;`,
     [cutoff]
@@ -470,7 +470,7 @@ export async function getMonthlyVisits(days = 36500, importTimestamp?: number, b
   const database = await getDb();
   if (!database) return [];
   const results = await database.getAllAsync(
-    `SELECT strftime('%Y-%m', datetime(timestamp/1000, 'unixepoch')) as month,
+    `SELECT strftime('%Y-%m', datetime(timestamp/1000, 'unixepoch', 'localtime')) as month,
      COUNT(*) as count FROM visits WHERE activity = 'Visit' AND timestamp >= ?
      GROUP BY month ORDER BY month DESC LIMIT 12;`,
     [cutoff]
@@ -519,7 +519,7 @@ export async function getMonthlyDistance(days = 36500, importTimestamp?: number,
   if (!database) return [];
   const results = await database.getAllAsync(
     `SELECT 
-      strftime('%Y-%m', datetime(timestamp/1000, 'unixepoch')) as month,
+      strftime('%Y-%m', datetime(timestamp/1000, 'unixepoch', 'localtime')) as month,
       SUM(CASE
         WHEN distance_meters > 0 THEN distance_meters / 1609.34
         ELSE MIN(duration_minutes, 45) / 60.0 * 30
@@ -803,13 +803,13 @@ export async function getFunStats(): Promise<{
   ) as any;
 
   const dayResult = await database.getAllAsync(
-    `SELECT CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as dow,
+    `SELECT CAST(strftime('%w', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as dow,
      COUNT(*) as count FROM visits WHERE activity = 'Visit'
      GROUP BY dow ORDER BY count DESC LIMIT 1;`
   ) as any[];
 
   const timeResult = await database.getAllAsync(
-    `SELECT CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch')) AS INTEGER) as hour,
+    `SELECT CAST(strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS INTEGER) as hour,
      COUNT(*) as count FROM visits WHERE activity = 'Visit'
      GROUP BY hour ORDER BY count DESC;`
   ) as any[];
@@ -1083,17 +1083,23 @@ export type Segment = {
   emoji: string;
 };
 
-export async function computeSegments(homeCoords?: { lat: number; lon: number } | null): Promise<Segment[]> {
+export async function computeSegments(homeCoords?: { lat: number; lon: number } | null, days = 30): Promise<Segment[]> {
   const visits = await getAllVisits();
   if (visits.length === 0) return [];
 
   const now = Date.now();
-  const days30 = 30 * 24 * 60 * 60 * 1000;
+  const cutoff30 = now - (days * 24 * 60 * 60 * 1000);
   const days7 = 7 * 24 * 60 * 60 * 1000;
-  const cutoff30 = now - days30;
   const cutoff7 = now - days7;
 
   const recent = visits.filter(v => v.timestamp >= cutoff30);
+
+  // Human-readable period label for segment descriptions
+  const periodLabel = days <= 7 ? 'last 7 days'
+    : days <= 30 ? 'last 30 days'
+    : days <= 90 ? 'last 90 days'
+    : days <= 365 ? 'last year'
+    : 'all time';
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -1123,10 +1129,10 @@ export async function computeSegments(homeCoords?: { lat: number; lon: number } 
     emoji: '🍽️',
     level: diningCount >= 20 ? 'H' : diningCount >= 8 ? 'M' : 'L',
     description: diningCount >= 20
-      ? `Heavy diner — ${diningCount} restaurant visits in your data`
+      ? `Heavy diner — ${diningCount} restaurant visits in the ${periodLabel}`
       : diningCount >= 8
-      ? `Moderate diner — ${diningCount} restaurant visits in your data`
-      : `Light diner — ${diningCount} restaurant visits in your data`,
+      ? `Moderate diner — ${diningCount} restaurant visits in the ${periodLabel}`
+      : `Light diner — ${diningCount} restaurant visits in the ${periodLabel}`,
   };
 
   // ── 2. Fast food user ────────────────────────────────────────────────────
@@ -1138,10 +1144,10 @@ export async function computeSegments(homeCoords?: { lat: number; lon: number } 
     emoji: '🍔',
     level: ffCount >= 15 ? 'H' : ffCount >= 6 ? 'M' : 'L',
     description: ffCount >= 15
-      ? `Heavy — ${ffCount} fast food visits in your data`
+      ? `Heavy — ${ffCount} fast food visits in the ${periodLabel}`
       : ffCount >= 6
-      ? `Moderate — ${ffCount} fast food visits in your data`
-      : `Light — ${ffCount} fast food visits in your data`,
+      ? `Moderate — ${ffCount} fast food visits in the ${periodLabel}`
+      : `Light — ${ffCount} fast food visits in the ${periodLabel}`,
   };
 
   // ── 3. Drive-thru loyal ──────────────────────────────────────────────────
@@ -1166,10 +1172,10 @@ export async function computeSegments(homeCoords?: { lat: number; lon: number } 
     emoji: '☕',
     level: coffeeCount >= 12 ? 'H' : coffeeCount >= 8 ? 'M' : 'L',
     description: coffeeCount >= 12
-      ? `Heavy — ${coffeeCount} café visits in your data`
+      ? `Heavy — ${coffeeCount} café visits in the ${periodLabel}`
       : coffeeCount >= 8
-      ? `Moderate — ${coffeeCount} café visits in your data`
-      : `Light — ${coffeeCount} café visits in your data`,
+      ? `Moderate — ${coffeeCount} café visits in the ${periodLabel}`
+      : `Light — ${coffeeCount} café visits in the ${periodLabel}`,
   };
 
   // ── 5. Late night diner ──────────────────────────────────────────────────
@@ -1266,7 +1272,7 @@ export async function computeSegments(homeCoords?: { lat: number; lon: number } 
     emoji: '🛍️',
     level: retailVisits.length >= 8 && uniqueRetailStores >= 4 ? 'Y' : 'N',
     description: retailVisits.length >= 8 && uniqueRetailStores >= 4
-      ? `${retailVisits.length} retail visits across ${uniqueRetailStores} stores in your data`
+      ? `${retailVisits.length} retail visits across ${uniqueRetailStores} stores in the ${periodLabel}`
       : 'Selective retail shopper',
   };
 
@@ -1347,7 +1353,7 @@ export async function computeSegments(homeCoords?: { lat: number; lon: number } 
     emoji: '🚙',
     level: commuterLongTrips.length >= 20 ? 'Y' : 'N',
     description: commuterLongTrips.length >= 20
-      ? `${commuterLongTrips.length} qualifying commute trips in your data`
+      ? `${commuterLongTrips.length} qualifying commute trips in the ${periodLabel}`
       : 'No strong commute pattern detected',
   };
 

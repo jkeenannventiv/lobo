@@ -92,11 +92,31 @@ function normalizeName(name: string | null): string | null {
   return name;
 }
 
-// ── Apply both transforms to a raw worker result ───────────────────────────
+// ── Name-based category override ──────────────────────────────────────────
+// Applied after translation — catches cases where Google returns a wrong type
+// (e.g. a high school classified as Medical, a park as Point of Interest).
+const NAME_CATEGORY_OVERRIDES: { pattern: RegExp; category: string }[] = [
+  { pattern: /\b(high school|middle school|elementary school|primary school|junior high|grade school|prep school|academy|montessori|preschool|daycare|day care|learning center)\b/i, category: 'Education' },
+  { pattern: /\b(park|trail|greenway|nature preserve|state park|national park|recreation area|arboretum)\b/i, category: 'Entertainment' },
+  { pattern: /\b(church|chapel|cathedral|synagogue|mosque|temple|parish|worship)\b/i, category: 'Religious' },
+];
+
+function applyNameOverride(name: string | null, category: string | null): string | null {
+  if (!name) return category;
+  for (const { pattern, category: overrideCategory } of NAME_CATEGORY_OVERRIDES) {
+    if (pattern.test(name)) return overrideCategory;
+  }
+  return category;
+}
+
+// ── Apply all transforms to a raw worker result ────────────────────────────
 function normalizeResult(raw: PoiResult): PoiResult {
+  const normalizedName = normalizeName(raw.name);
+  const translatedCategory = translateCategory(raw.category);
+  const finalCategory = applyNameOverride(normalizedName, translatedCategory);
   return {
-    name: normalizeName(raw.name),
-    category: translateCategory(raw.category),
+    name: normalizedName,
+    category: finalCategory,
     address: raw.address,
   };
 }

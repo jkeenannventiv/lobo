@@ -19,6 +19,7 @@ export default function ProcessingScreen({ navigation, route }: any) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
+  const [isLargeFile, setIsLargeFile] = useState(false);
 
   useEffect(() => {
     processFile();
@@ -30,6 +31,17 @@ export default function ProcessingScreen({ navigation, route }: any) {
       await initDatabase();
 
       setStatus('Reading file...');
+
+      // Detect large files and warn the user before processing starts
+      try {
+        const FileSystem = await import('expo-file-system/legacy');
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        const fileSizeBytes = fileInfo.exists && 'size' in fileInfo ? (fileInfo as any).size : 0;
+        const fileSizeMB = fileSizeBytes / (1024 * 1024);
+        if (fileSizeMB > 20) {
+          setIsLargeFile(true);
+        }
+      } catch {}
 
       const result = await streamParseTimeline(
         fileUri,
@@ -124,6 +136,17 @@ export default function ProcessingScreen({ navigation, route }: any) {
               <View style={styles.warningBox}>
                 <Text style={styles.warningText}>{warning}</Text>
               </View>
+            ) : isLargeFile ? (
+              <View style={styles.largeFileBox}>
+                <Text style={styles.largeFileTitle}>⏳ Large file detected</Text>
+                <Text style={styles.largeFileText}>
+                  Your Timeline file is large — this initial import may take 30–60 minutes.
+                  This is a one-time process. Future refreshes will only import new data and complete in minutes.
+                </Text>
+                <Text style={styles.largeFileText} style={{ marginTop: 8, fontWeight: '600', color: '#1a3a5c' } as any}>
+                  Keep the app open and screen on — processing pauses if the screen goes dark.
+                </Text>
+              </View>
             ) : (
               <Text style={styles.hint}>
                 This may take a minute for large files.{'\n'}
@@ -212,5 +235,25 @@ const styles = StyleSheet.create({
     color: '#555570',
     lineHeight: 20,
     textAlign: 'center',
+  },
+  largeFileBox: {
+    backgroundColor: '#eef4fb',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#1a3a5c',
+    marginTop: 8,
+    width: '100%',
+  },
+  largeFileTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#1a1a2e',
+    marginBottom: 8,
+  },
+  largeFileText: {
+    fontSize: 13,
+    color: '#555570',
+    lineHeight: 20,
   },
 });
