@@ -10,7 +10,7 @@ import {
   Switch,
 } from 'react-native';
 import LogoHeader from '../components/LogoHeader';
-import { getSession, clearSession, getConsent, saveConsent, ConsentRecord, getHomeLocation, getWorkLocation, SavedLocation } from '../config/storage';
+import { getSession, clearSession, getConsent, saveConsent, ConsentRecord, getHomeLocation, getWorkLocation, clearHomeLocation, clearWorkLocation, clearPendingHomeLocation, SavedLocation } from '../config/storage';
 import { getUserId, syncConsentToSupabase } from '../config/userService';
 import { clearVisits } from '../config/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -61,7 +61,12 @@ export default function SettingsScreen({ navigation }: any) {
     await clearVisits();
     await AsyncStorage.removeItem('lobo_last_import');
     await AsyncStorage.removeItem('lobo_import_log');
+    await clearHomeLocation();
+    await clearWorkLocation();
+    await clearPendingHomeLocation();
     setVisitCount(0);
+    setHomeLocation(null);
+    setWorkLocation(null);
     if (Platform.OS === 'web') {
       window.alert('Done — your data has been cleared.');
     } else {
@@ -95,6 +100,9 @@ export default function SettingsScreen({ navigation }: any) {
     await clearVisits();
     await AsyncStorage.removeItem('lobo_last_import');
     await AsyncStorage.removeItem('lobo_import_log');
+    await clearHomeLocation();
+    await clearWorkLocation();
+    await clearPendingHomeLocation();
     navigation.navigate('ExportGuide');
   };
 
@@ -195,7 +203,7 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.sectionTitle}>ABOUT</Text>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Version</Text>
-            <Text style={styles.rowValue}>1.0.0</Text>
+            <Text style={styles.rowValue}>1.1.0</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Website</Text>
