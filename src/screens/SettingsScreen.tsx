@@ -203,7 +203,7 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.sectionTitle}>ABOUT</Text>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Version</Text>
-            <Text style={styles.rowValue}>1.1.0</Text>
+            <Text style={styles.rowValue}>1.1.1</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Website</Text>
