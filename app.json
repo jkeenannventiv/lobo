@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lobo",
     "slug": "lobo",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,11 +14,13 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.getlobo.lobo",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Lobo uses your location to detect      your home and work areas so it can accurately label visits in your movement history — for example, marking time spent at your home address as 'Home'.",
+        "NSUserTrackingUsageDescription": "Lobo uses this to share anonymous behavioral segment flags (such as 'frequent restaurant visitor') to help improve the app. Your identity and location history are never shared."
+       }
     },
     "android": {
       "icon": "./assets/icon.png",
@@ -39,18 +41,19 @@
     },
     "plugins": [
       "expo-sqlite",
+      "expo-tracking-transparency",
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
-       [
-         "expo-build-properties",
-         {
-           "ios": {
-              "useFrameworks": "static",
-              "forceStaticLinking": ["RNFBApp", "RNFBAuth"]
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "forceStaticLinking": ["RNFBApp", "RNFBAuth"]
            }
-         }
-       ]
-    ],
+        }
+      ]
+     ],
     "extra": {
       "eas": {
         "projectId": "b2900671-907f-481f-b211-4a3cb987c701"

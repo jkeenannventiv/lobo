@@ -27,10 +27,6 @@ export default function LocationScreen({ navigation }: any) {
     }
   };
 
-  const handleSkip = () => {
-    navigation.navigate('ExportGuide');
-  };
-
   return (
     <View style={styles.container}>
       <LogoHeader />
@@ -44,16 +40,16 @@ export default function LocationScreen({ navigation }: any) {
 
         <Text style={styles.icon}>📍</Text>
 
-        <Text style={styles.title}>Allow Location Access</Text>
+        <Text style={styles.title}>Location Access</Text>
         <Text style={styles.subtitle}>
-          Lobo uses your location to show your current position on the map
-          and to help contextualize your movement history.
+          Lobo uses your location to detect your home and work areas so it
+          can accurately label visits in your movement history.
         </Text>
 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>What we use it for</Text>
-          <Text style={styles.infoItem}>✓  Show your position on the map</Text>
-          <Text style={styles.infoItem}>✓  Contextualize movement history</Text>
+          <Text style={styles.infoItem}>✓  Detect your home and work locations</Text>
+          <Text style={styles.infoItem}>✓  Label visits accurately in your history</Text>
           <Text style={styles.infoItem}>✓  Improve place detection accuracy</Text>
         </View>
 
@@ -67,10 +63,7 @@ export default function LocationScreen({ navigation }: any) {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity style={styles.button} onPress={handleAllow}>
-          <Text style={styles.buttonText}>Allow Location</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-          <Text style={styles.skipText}>Not Now</Text>
+          <Text style={styles.buttonText}>Continue</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -149,16 +142,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 1,
-  },
-  skipButton: {
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#dddddd',
-  },
-  skipText: {
-    color: '#555570',
-    fontSize: 16,
   },
 });

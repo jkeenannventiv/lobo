@@ -15,6 +15,13 @@ import { getUserId, syncConsentToSupabase } from '../config/userService';
 import { clearVisits } from '../config/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
+const requestTrackingPermissionsAsync = async () => {
+  if (Platform.OS !== 'ios') return { status: 'granted' };
+  const mod = await import('expo-tracking-transparency');
+  return mod.requestTrackingPermissionsAsync();
+};
+
 export default function SettingsScreen({ navigation }: any) {
   const [phone, setPhone] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -75,13 +82,23 @@ export default function SettingsScreen({ navigation }: any) {
   };
 
   const handleToggleDataSharing = async () => {
-    const newValue = !(consent?.dataSharingOptIn ?? false);
-    const record = await saveConsent(newValue);
-    setConsent(record);
-    getUserId().then(userId => {
-      if (userId) syncConsentToSupabase(userId, record.version, record.dataSharingOptIn, record.consentedAt);
-    });
-  };
+  const currentValue = consent?.dataSharingOptIn ?? false;
+  const newValue = !currentValue;
+
+  if (newValue && Platform.OS === 'ios') {
+    const { status } = await requestTrackingPermissionsAsync();
+    if (status !== 'granted') {
+      // ATT denied — leave toggle off silently
+      return;
+    }
+  }
+
+  const record = await saveConsent(newValue);
+  setConsent(record);
+  getUserId().then(userId => {
+    if (userId) syncConsentToSupabase(userId, record.version, record.dataSharingOptIn, record.consentedAt);
+  });
+};
 
   const handleForceReload = async () => {
     const confirmed = Platform.OS === 'web'
@@ -203,7 +220,7 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.sectionTitle}>ABOUT</Text>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Version</Text>
-            <Text style={styles.rowValue}>1.1.1</Text>
+            <Text style={styles.rowValue}>1.1.2</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Website</Text>

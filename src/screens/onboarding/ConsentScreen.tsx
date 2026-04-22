@@ -13,17 +13,21 @@ import {
 import { saveConsent } from '../../config/storage';
 import { getUserId, syncConsentToSupabase } from '../../config/userService';
 
+
+const requestTrackingPermissionsAsync = async () => {
+  if (Platform.OS !== 'ios') return { status: 'granted' };
+  const mod = await import('expo-tracking-transparency');
+  return mod.requestTrackingPermissionsAsync();
+};
 export default function ConsentScreen({ navigation }: any) {
   const [termsAgreed, setTermsAgreed] = useState(false);
-  const [dataSharingOptIn, setDataSharingOptIn] = useState(true);
+  const [dataSharingOptIn, setDataSharingOptIn] = useState(false);
 
   const handleContinue = async () => {
     if (!termsAgreed) return;
 
-    // Save consent locally
     const record = await saveConsent(dataSharingOptIn);
 
-    // Push to Supabase in background
     getUserId().then(userId => {
       if (userId) {
         syncConsentToSupabase(
@@ -36,6 +40,27 @@ export default function ConsentScreen({ navigation }: any) {
     });
 
     navigation.navigate('Location');
+  };
+
+  const handleDataSharingToggle = async (newValue: boolean) => {
+    if (!newValue) {
+      // Turning off — no ATT needed
+      setDataSharingOptIn(false);
+      return;
+    }
+
+    if (Platform.OS === 'ios') {
+      const { status } = await requestTrackingPermissionsAsync();
+      if (status === 'granted') {
+        setDataSharingOptIn(true);
+      } else {
+        // User denied ATT — leave toggle off silently
+        setDataSharingOptIn(false);
+      }
+    } else {
+      // Android — no ATT, proceed directly
+      setDataSharingOptIn(true);
+    }
   };
 
   const openLink = (url: string) => {
@@ -124,14 +149,14 @@ export default function ConsentScreen({ navigation }: any) {
             <View style={styles.optInText}>
               <Text style={styles.optInTitle}>Anonymous data sharing</Text>
               <Text style={styles.optInDesc}>
-                You're opted in to sharing anonymous behavioral segment flags (e.g. "frequent restaurant visitor") to help us build audience insights. Your identity and location history are never shared. You can turn this off anytime in Settings.
+                Optionally share anonymous behavioral segment flags (e.g. "frequent restaurant visitor") to help us build audience insights. Your identity and location history are never shared. You can turn this off anytime in Settings.
               </Text>
             </View>
             <Switch
               value={dataSharingOptIn}
-              onValueChange={setDataSharingOptIn}
+              onValueChange={handleDataSharingToggle}
               trackColor={{ false: '#e0e0e0', true: '#1a3a5c' }}
-              thumbColor={dataSharingOptIn ? '#ffffff' : '#ffffff'}
+              thumbColor="#ffffff"
             />
           </View>
           {dataSharingOptIn && (
