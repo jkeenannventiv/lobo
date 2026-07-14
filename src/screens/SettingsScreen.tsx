@@ -10,11 +10,10 @@ import {
   Switch,
 } from 'react-native';
 import LogoHeader from '../components/LogoHeader';
-import { getSession, clearSession, getConsent, saveConsent, ConsentRecord, getHomeLocation, getWorkLocation, clearHomeLocation, clearWorkLocation, clearPendingHomeLocation, SavedLocation } from '../config/storage';
-import { getUserId, syncConsentToSupabase } from '../config/userService';
+import { getConsent, saveConsent, ConsentRecord, getHomeLocation, getWorkLocation, clearHomeLocation, clearWorkLocation, clearPendingHomeLocation, SavedLocation } from '../config/storage';
 import { clearVisits } from '../config/database';
+import { FEATURES } from '../config/featureFlags';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 
 const requestTrackingPermissionsAsync = async () => {
   if (Platform.OS !== 'ios') return { status: 'granted' };
@@ -23,22 +22,27 @@ const requestTrackingPermissionsAsync = async () => {
 };
 
 export default function SettingsScreen({ navigation }: any) {
-  const [phone, setPhone] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
   const [visitCount, setVisitCount] = useState<number>(0);
   const [consent, setConsent] = useState<ConsentRecord | null>(null);
   const [homeLocation, setHomeLocation] = useState<SavedLocation | null>(null);
   const [workLocation, setWorkLocation] = useState<SavedLocation | null>(null);
+
+  // Auth-only state — only loaded when auth is enabled
+  const [phone, setPhone] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings();
   }, []);
 
   const loadSettings = async () => {
-    const session = await getSession();
-    if (session) {
-      setPhone(session.phone);
-      setEmail(session.email);
+    if (FEATURES.AUTH_ENABLED) {
+      const { getSession } = await import('../config/storage');
+      const session = await getSession();
+      if (session) {
+        setPhone(session.phone);
+        setEmail(session.email);
+      }
     }
     const { getVisitCount } = await import('../config/database');
     const count = await getVisitCount();
@@ -53,11 +57,11 @@ export default function SettingsScreen({ navigation }: any) {
 
   const handleClearData = async () => {
     const confirmed = Platform.OS === 'web'
-      ? window.confirm('This will delete all your imported Timeline data. Your account will remain active. Are you sure?')
+      ? window.confirm('This will delete all your imported Timeline data. Are you sure?')
       : await new Promise<boolean>(resolve =>
           Alert.alert(
             'Clear All Data',
-            'This will delete all your imported Timeline data. Your account will remain active. Are you sure?',
+            'This will delete all your imported Timeline data. Are you sure?',
             [
               { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
               { text: 'Clear Data', style: 'destructive', onPress: () => resolve(true) },
@@ -82,23 +86,26 @@ export default function SettingsScreen({ navigation }: any) {
   };
 
   const handleToggleDataSharing = async () => {
-  const currentValue = consent?.dataSharingOptIn ?? false;
-  const newValue = !currentValue;
+    const currentValue = consent?.dataSharingOptIn ?? false;
+    const newValue = !currentValue;
 
-  if (newValue && Platform.OS === 'ios') {
-    const { status } = await requestTrackingPermissionsAsync();
-    if (status !== 'granted') {
-      // ATT denied — leave toggle off silently
-      return;
+    if (newValue && Platform.OS === 'ios') {
+      const { status } = await requestTrackingPermissionsAsync();
+      if (status !== 'granted') {
+        return;
+      }
     }
-  }
 
-  const record = await saveConsent(newValue);
-  setConsent(record);
-  getUserId().then(userId => {
-    if (userId) syncConsentToSupabase(userId, record.version, record.dataSharingOptIn, record.consentedAt);
-  });
-};
+    const record = await saveConsent(newValue);
+    setConsent(record);
+
+    if (FEATURES.AUTH_ENABLED) {
+      const { getUserId, syncConsentToSupabase } = await import('../config/userService');
+      getUserId().then(userId => {
+        if (userId) syncConsentToSupabase(userId, record.version, record.dataSharingOptIn, record.consentedAt);
+      });
+    }
+  };
 
   const handleForceReload = async () => {
     const confirmed = Platform.OS === 'web'
@@ -137,7 +144,10 @@ export default function SettingsScreen({ navigation }: any) {
           )
         );
     if (!confirmed) return;
-    await clearSession();
+    if (FEATURES.AUTH_ENABLED) {
+      const { clearSession } = await import('../config/storage');
+      await clearSession();
+    }
     await clearVisits();
     await AsyncStorage.clear();
     navigation.reset({
@@ -155,17 +165,20 @@ export default function SettingsScreen({ navigation }: any) {
         </TouchableOpacity>
         <Text style={styles.title}>Settings</Text>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ACCOUNT</Text>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Phone</Text>
-            <Text style={styles.rowValue}>{phone || '—'}</Text>
+        {/* Account section — only shown when auth is enabled */}
+        {FEATURES.AUTH_ENABLED && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>ACCOUNT</Text>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Phone</Text>
+              <Text style={styles.rowValue}>{phone || '—'}</Text>
+            </View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Email</Text>
+              <Text style={styles.rowValue}>{email || '—'}</Text>
+            </View>
           </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Email</Text>
-            <Text style={styles.rowValue}>{email || '—'}</Text>
-          </View>
-        </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>PRIVACY & DATA</Text>
@@ -173,18 +186,23 @@ export default function SettingsScreen({ navigation }: any) {
             <Text style={styles.rowLabel}>Records stored</Text>
             <Text style={styles.rowValue}>{visitCount.toLocaleString()}</Text>
           </View>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel}>Anonymous data sharing</Text>
-              <Text style={styles.rowHint}>Share behavioral segment flags to support Lobo</Text>
+
+          {/* Data sharing toggle — only shown when feature is enabled */}
+          {FEATURES.DATA_SHARING_TOGGLE_ENABLED && (
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowLabel}>Anonymous data sharing</Text>
+                <Text style={styles.rowHint}>Share behavioral segment flags to support Lobo</Text>
+              </View>
+              <Switch
+                value={consent?.dataSharingOptIn ?? false}
+                onValueChange={handleToggleDataSharing}
+                trackColor={{ false: '#e0e0e0', true: '#1a3a5c' }}
+                thumbColor="#ffffff"
+              />
             </View>
-            <Switch
-              value={consent?.dataSharingOptIn ?? false}
-              onValueChange={handleToggleDataSharing}
-              trackColor={{ false: '#e0e0e0', true: '#1a3a5c' }}
-              thumbColor="#ffffff"
-            />
-          </View>
+          )}
+
           <TouchableOpacity style={styles.row} onPress={handleClearData}>
             <Text style={styles.rowLabel}>Clear all data</Text>
             <Text style={styles.rowArrow}>→</Text>
@@ -220,7 +238,7 @@ export default function SettingsScreen({ navigation }: any) {
           <Text style={styles.sectionTitle}>ABOUT</Text>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Version</Text>
-            <Text style={styles.rowValue}>1.1.2</Text>
+            <Text style={styles.rowValue}>1.2.0</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Website</Text>
@@ -228,9 +246,12 @@ export default function SettingsScreen({ navigation }: any) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
+        {/* Sign out only meaningful when auth is enabled */}
+        {FEATURES.AUTH_ENABLED && (
+          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        )}
 
       </ScrollView>
     </View>

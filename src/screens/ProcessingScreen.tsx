@@ -7,19 +7,21 @@ import {
   Platform,
 } from 'react-native';
 import { streamParseTimeline } from '../config/streamParser';
-import { initDatabase, clearVisits, insertVisits, logImport } from '../config/database';
+import { initDatabase, clearVisits, insertVisits, logImport, getMostRecentVisitTimestamp } from '../config/database';
 import { saveLastImport } from '../config/storage';
+import { FEATURES } from '../config/featureFlags';
 import LogoHeader from '../components/LogoHeader';
 
 const isWeb = Platform.OS === 'web';
 
 export default function ProcessingScreen({ navigation, route }: any) {
-  const { fileUri, fileName } = route.params;
+  const { fileUri, fileName, forceFullReload } = route.params ?? {};
   const [status, setStatus] = useState('Initializing...');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [isLargeFile, setIsLargeFile] = useState(false);
+  const [isIncremental, setIsIncremental] = useState(false);
 
   useEffect(() => {
     processFile();
@@ -43,13 +45,41 @@ export default function ProcessingScreen({ navigation, route }: any) {
         }
       } catch {}
 
+      // Determine cutoff timestamp for incremental import
+      // forceFullReload=true clears everything and reimports from scratch
+      // Otherwise, only parse records newer than the most recent visit in the DB
+      let sinceTimestamp: number | undefined = undefined;
+      let incrementalFlag = false;
+
+      if (!forceFullReload) {
+        const mostRecent = await getMostRecentVisitTimestamp();
+        if (mostRecent > 0) {
+          // Subtract 24 hours to catch any records that may have been
+          // missed or updated near the boundary of the last import
+          sinceTimestamp = mostRecent - (24 * 60 * 60 * 1000);
+          incrementalFlag = true;
+          setIsIncremental(true);
+          setStatus('Checking for new records...');
+        }
+      }
+
+      if (!incrementalFlag) {
+        // Full reload — clear existing data first
+        setStatus('Clearing existing data...');
+        await clearVisits();
+      }
+
       const result = await streamParseTimeline(
         fileUri,
         (parsed, total) => {
           const pct = total > 0 ? Math.round((parsed / total) * 100) : 0;
           setProgress(pct);
-          setStatus(`Reading data... ${pct}%`);
-        }
+          setStatus(incrementalFlag
+            ? `Scanning for new records... ${pct}%`
+            : `Reading data... ${pct}%`
+          );
+        },
+        sinceTimestamp
       );
 
       if (result.error) {
@@ -59,13 +89,22 @@ export default function ProcessingScreen({ navigation, route }: any) {
 
       const records = result.records;
 
+      if (records.length === 0 && incrementalFlag) {
+        // No new records — that's fine, just navigate forward
+        setStatus('Already up to date!');
+        await saveLastImport();
+        setTimeout(() => {
+          navigation.replace('Enrichment');
+        }, 1500);
+        return;
+      }
+
       if (records.length === 0) {
         setError('No records found in this file. Please make sure you are exporting your Timeline from Google Maps.');
         return;
       }
 
-      setStatus(`Found ${records.length.toLocaleString()} records (${result.format === 'new_ios' ? 'iOS format' : 'Android/Web format'})...`);
-      await clearVisits();
+      setStatus(`Found ${records.length.toLocaleString()} ${incrementalFlag ? 'new' : ''} records (${result.format === 'new_ios' ? 'iOS format' : 'Android/Web format'})...`);
 
       const batchSize = 500;
       for (let i = 0; i < records.length; i += batchSize) {
@@ -87,27 +126,31 @@ export default function ProcessingScreen({ navigation, route }: any) {
 
       await logImport(records.length, 'new');
       await saveLastImport();
-           // Log to Supabase in background
-      import('../config/userService').then(async ({ getUserId, logImportToSupabase, pushBasicImportFlagsToSupabase }) => {
-        const userId = await getUserId();
-        if (userId) logImportToSupabase(userId, records.length, 'new');
-        // Push basic import flags anonymously
-        const { getSession, getConsent } = await import('../config/storage');
-        const session = await getSession();
-        const consent = await getConsent();
-        if (session?.phone && consent?.dataSharingOptIn) {
-          await pushBasicImportFlagsToSupabase(session.phone, records.length, true);
-        }
-      });
 
+      // Log to Supabase in background — only when feature is enabled
+      if (FEATURES.SUPABASE_LOGGING_ENABLED) {
+        import('../config/userService').then(async ({ getUserId, logImportToSupabase, pushBasicImportFlagsToSupabase }) => {
+          const userId = await getUserId();
+          if (userId) logImportToSupabase(userId, records.length, 'new');
+          // Push basic import flags anonymously
+          const { getSession, getConsent } = await import('../config/storage');
+          const session = await getSession();
+          const consent = await getConsent();
+          if (session?.phone && consent?.dataSharingOptIn) {
+            await pushBasicImportFlagsToSupabase(session.phone, records.length, true);
+          }
+        });
+      }
 
       // Check if data is sparse — few visits might mean Timeline was recently enabled
       const visitCount = records.filter((r: any) => r.activity === 'Visit').length;
       const totalCount = records.length;
-      if (visitCount === 0 && totalCount > 0) {
-        setWarning('We imported your data but found no place visits — this can happen if Google Timeline was recently enabled or if your export only contains driving data. Your insights will improve as Google captures more visits over time.');
-      } else if (visitCount < 10 && totalCount > 50) {
-        setWarning(`We found ${visitCount} place visits out of ${totalCount} records. For best results, make sure Google Timeline has been active for at least a few weeks.`);
+      if (!incrementalFlag) {
+        if (visitCount === 0 && totalCount > 0) {
+          setWarning('We imported your data but found no place visits — this can happen if Google Timeline was recently enabled or if your export only contains driving data. Your insights will improve as Google captures more visits over time.');
+        } else if (visitCount < 10 && totalCount > 50) {
+          setWarning(`We found ${visitCount} place visits out of ${totalCount} records. For best results, make sure Google Timeline has been active for at least a few weeks.`);
+        }
       }
 
       setStatus('Done!');
@@ -136,7 +179,7 @@ export default function ProcessingScreen({ navigation, route }: any) {
               <View style={styles.warningBox}>
                 <Text style={styles.warningText}>{warning}</Text>
               </View>
-            ) : isLargeFile ? (
+            ) : isLargeFile && !isIncremental ? (
               <View style={styles.largeFileBox}>
                 <Text style={styles.largeFileTitle}>⏳ Large file detected</Text>
                 <Text style={styles.largeFileText}>

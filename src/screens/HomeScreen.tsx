@@ -8,8 +8,10 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LogoHeader from '../components/LogoHeader';
 import { isRefreshDue, getLastImport, getHomeLocation, getWorkLocation, saveHomeLocation, getPendingHomeLocation, clearPendingHomeLocation } from '../config/storage';
+import { WEEK_IN_REVIEW_KEY } from './EnrichmentScreen';
 import {
   getVisitCount,
   getTopActivities,
@@ -113,6 +115,8 @@ export default function HomeScreen({ navigation, route }: any) {
   const [expandedPlace, setExpandedPlace] = useState<string | null>(null);
   const [placeVisits, setPlaceVisits] = useState<{ timestamp: number; duration_minutes: number; category: string }[]>([]);
   const [mostRecentTs, setMostRecentTs] = useState<number>(0);
+  const [savedWeekReview, setSavedWeekReview] = useState<any | null>(null);
+  const [showWeekReview, setShowWeekReview] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -149,6 +153,12 @@ export default function HomeScreen({ navigation, route }: any) {
   };
 
   const loadData = async () => {
+    // Load persisted week in review card
+    try {
+      const saved = await AsyncStorage.getItem(WEEK_IN_REVIEW_KEY);
+      if (saved) setSavedWeekReview(JSON.parse(saved));
+    } catch {}
+
     const mostRecentTs = await getMostRecentVisitTimestamp();
     setMostRecentTs(mostRecentTs);
     const homeLoc = await getHomeLocation();
@@ -283,6 +293,57 @@ export default function HomeScreen({ navigation, route }: any) {
                 <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail" allowFontScaling={false}>Latest</Text>
               </View>
             </View>
+
+            {/* Persistent Week in Review card — saved from last import */}
+            {savedWeekReview && showWeekReview && (
+              <View style={styles.weekReviewCard}>
+                <View style={styles.weekReviewHeader}>
+                  <Text style={styles.weekReviewTitle}>🏆 Last Week in Review</Text>
+                  <TouchableOpacity onPress={() => setShowWeekReview(false)}>
+                    <Text style={styles.weekReviewDismiss}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                {savedWeekReview.topPlace && (
+                  <View style={styles.weekReviewRow}>
+                    <Text style={styles.weekReviewEmoji}>📍</Text>
+                    <Text style={styles.weekReviewText}>
+                      Most visited: <Text style={styles.weekReviewHighlight}>{savedWeekReview.topPlace}</Text>
+                      {savedWeekReview.topPlaceCount > 1 ? ` (${savedWeekReview.topPlaceCount}x)` : ''}
+                    </Text>
+                  </View>
+                )}
+                {savedWeekReview.uniquePlaces > 0 && (
+                  <View style={styles.weekReviewRow}>
+                    <Text style={styles.weekReviewEmoji}>🗺️</Text>
+                    <Text style={styles.weekReviewText}>
+                      <Text style={styles.weekReviewHighlight}>{savedWeekReview.uniquePlaces} unique places</Text> visited
+                    </Text>
+                  </View>
+                )}
+                {savedWeekReview.totalTrips > 0 && (
+                  <View style={styles.weekReviewRow}>
+                    <Text style={styles.weekReviewEmoji}>🚗</Text>
+                    <Text style={styles.weekReviewText}>
+                      <Text style={styles.weekReviewHighlight}>{savedWeekReview.totalTrips} trips</Text> recorded
+                    </Text>
+                  </View>
+                )}
+                {savedWeekReview.activityVsAvg !== 'insufficient' && (
+                  <View style={styles.weekReviewRow}>
+                    <Text style={styles.weekReviewEmoji}>
+                      {savedWeekReview.activityVsAvg === 'more' ? '⬆️' : savedWeekReview.activityVsAvg === 'less' ? '⬇️' : '➡️'}
+                    </Text>
+                    <Text style={styles.weekReviewText}>
+                      {savedWeekReview.activityVsAvg === 'more'
+                        ? `More active than usual — ${savedWeekReview.weekVisits} visits vs avg ${savedWeekReview.avgWeeklyVisits}`
+                        : savedWeekReview.activityVsAvg === 'less'
+                        ? `Quieter than usual — ${savedWeekReview.weekVisits} visits vs avg ${savedWeekReview.avgWeeklyVisits}`
+                        : `About average — ${savedWeekReview.weekVisits} visits`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
 
             <View style={styles.tabs}>
               {(['overview', 'charts', 'stats', 'history'] as const).map((tab) => {
@@ -1995,5 +2056,50 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#aaa',
     fontWeight: '600' as const,
+  },
+  weekReviewCard: {
+    backgroundColor: '#f0f4f8',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#e94560',
+  },
+  weekReviewHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 12,
+  },
+  weekReviewTitle: {
+    fontSize: 15,
+    fontWeight: 'bold' as const,
+    color: '#1a1a2e',
+  },
+  weekReviewDismiss: {
+    fontSize: 16,
+    color: '#aaaaaa',
+    fontWeight: '600' as const,
+    padding: 4,
+  },
+  weekReviewRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginBottom: 8,
+    gap: 8,
+  },
+  weekReviewEmoji: {
+    fontSize: 16,
+    width: 24,
+  },
+  weekReviewText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#555570',
+    lineHeight: 20,
+  },
+  weekReviewHighlight: {
+    fontWeight: 'bold' as const,
+    color: '#1a1a2e',
   },
 });

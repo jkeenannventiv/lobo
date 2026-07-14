@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Image, StyleSheet, Animated } from 'react-native';
 import { getSession, isConsentCurrent } from '../../config/storage';
 import { getVisitCount } from '../../config/database';
+import { FEATURES } from '../../config/featureFlags';
 
 const splashImage = require('../../../assets/lobo_place_splash.png');
 
@@ -22,29 +23,42 @@ export default function SplashScreen({ navigation }: any) {
         useNativeDriver: false,
       }),
     ]).start(async () => {
-      const session = await getSession();
-      if (!session) {
-        // New user — start onboarding
-        navigation.replace('HowItWorks');
-        return;
+
+      if (FEATURES.AUTH_ENABLED) {
+        // ── Auth-gated flow ──────────────────────────────────────────────────
+        const session = await getSession();
+        if (!session) {
+          navigation.replace('HowItWorks');
+          return;
+        }
+
+        const consentCurrent = await isConsentCurrent();
+        if (!consentCurrent) {
+          navigation.replace('Consent');
+          return;
+        }
+
+        const visitCount = await getVisitCount();
+        if (visitCount === 0) {
+          navigation.replace('ExportGuide');
+          return;
+        }
+
+        navigation.replace('Home');
+
+      } else {
+        // ── No-auth flow ─────────────────────────────────────────────────────
+        // Skip phone/OTP entirely. Route by data state only.
+        const visitCount = await getVisitCount();
+        if (visitCount === 0) {
+          // First time user or cleared data — go to import
+          navigation.replace('ExportGuide');
+        } else {
+          // Returning user with data — go straight to dashboard
+          navigation.replace('Home');
+        }
       }
 
-      const consentCurrent = await isConsentCurrent();
-      if (!consentCurrent) {
-        // Returning user who hasn't consented to current version
-        navigation.replace('Consent');
-        return;
-      }
-
-      const visitCount = await getVisitCount();
-      if (visitCount === 0) {
-        // Logged in and consented but no data yet — go to import
-        navigation.replace('ExportGuide');
-        return;
-      }
-
-      // Fully returning user — go straight to dashboard
-      navigation.replace('Home');
     });
   }, []);
 

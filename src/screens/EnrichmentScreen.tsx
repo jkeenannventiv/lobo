@@ -6,11 +6,15 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LogoHeader from '../components/LogoHeader';
 import { getAllVisits, updateVisitPoi, updateVisitPoiByPlaceId, getWeekInReview, WeekInReview, computeSegments, getNightsAwayFromHome } from '../config/database';
 import { getLastImportTimestamp } from '../config/database';
 import { lookupPoi } from '../config/poi';
 import { lookupCategory, applyNameHeuristics, normalizeGoogleCategory } from '../config/categoryMappings';
+import { FEATURES } from '../config/featureFlags';
+
+export const WEEK_IN_REVIEW_KEY = 'lobo_last_week_in_review';
 
 export default function EnrichmentScreen({ navigation }: any) {
   const [status, setStatus] = useState('Starting enrichment...');
@@ -87,15 +91,20 @@ export default function EnrichmentScreen({ navigation }: any) {
 
       setStatus(`Done! Enriched ${toEnrich.length} visits across ${seen.size} unique locations.`);
 
-      // Compute week in review
+      // Compute week in review and persist it so HomeScreen can show it
       try {
         const importTs = await getLastImportTimestamp();
         const review = await getWeekInReview(importTs);
         setWeekReview(review);
+        // Save to AsyncStorage so it persists on HomeScreen between sessions
+        await AsyncStorage.setItem(
+          WEEK_IN_REVIEW_KEY,
+          JSON.stringify({ ...review, savedAt: Date.now() })
+        );
       } catch {}
 
-      // Push full segment flags to Supabase in background
-      import('../config/userService').then(async ({ pushSegmentsToSupabase }) => {
+      // Push full segment flags to Supabase in background — only when enabled
+      if (FEATURES.SUPABASE_LOGGING_ENABLED) import('../config/userService').then(async ({ pushSegmentsToSupabase }) => {
         try {
           const { getSession, getConsent, getHomeLocation } = await import('../config/storage');
           const session = await getSession();
