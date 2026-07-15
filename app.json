@@ -34,7 +34,8 @@
       "navigationBar": {
         "backgroundColor": "#ffffff",
         "barStyle": "dark-content"
-      }
+      },
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "favicon": "./assets/favicon.png"

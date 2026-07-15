@@ -33,9 +33,14 @@ export default function LogoHeader({ refreshDue = false }: Props) {
           onPress={() => navigation.navigate('ExportGuide')}
         >
           <Text style={styles.refreshButtonIcon}>🔄</Text>
-          <Text style={[styles.refreshButtonText, refreshDue && styles.refreshButtonTextDue]}>
-            Refresh
-          </Text>
+          {refreshDue && (
+            <Text style={[styles.refreshButtonText, styles.refreshButtonTextDue]}>
+              Refresh
+            </Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate('PatternTherapist')}>
+          <Text style={styles.chatIcon}>💬</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
           <Text style={styles.settingsIcon}>⚙️</Text>
@@ -49,7 +54,7 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 8 : 50,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingBottom: 8,
     backgroundColor: '#ffffff',
     flexDirection: 'row',
@@ -58,17 +63,21 @@ const styles = StyleSheet.create({
     height: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 120 : 170,
   },
   logo: {
-    width: 170,
-    height: 130,
-    marginLeft: -16,
+    width: 140,
+    height: 106,
+    marginLeft: -10,
   },
   rightIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    flexShrink: 0,
   },
   settingsIcon: {
-    fontSize: 24,
+    fontSize: 22,
+  },
+  chatIcon: {
+    fontSize: 20,
   },
   refreshButton: {
     flexDirection: 'row',
@@ -76,7 +85,7 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: '#f0f4f8',
     borderRadius: 20,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: '#e0e0e0',

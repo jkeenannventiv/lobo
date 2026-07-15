@@ -16,6 +16,7 @@ import ProcessingScreen from '../screens/ProcessingScreen';
 import EnrichmentScreen from '../screens/EnrichmentScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import LocationSetupScreen from '../screens/LocationSetupScreen';
+import PatternTherapistScreen from '../screens/PatternTherapistScreen';
 
 // Main App
 import HomeScreen from '../screens/HomeScreen';
@@ -43,6 +44,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Enrichment" component={EnrichmentScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="LocationSetup" component={LocationSetupScreen} />
+        <Stack.Screen name="PatternTherapist" component={PatternTherapistScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

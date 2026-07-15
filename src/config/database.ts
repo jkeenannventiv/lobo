@@ -320,6 +320,26 @@ export async function getTopCategories(days = 36500, importTimestamp?: number, b
   return results as { category: string; count: number }[];
 }
 
+export async function getPlaceCoordinates(name: string): Promise<{ lat: number; lon: number } | null> {
+  if (!name) return null;
+  if (isWeb) {
+    const visits = await getAllVisits();
+    const matches = visits.filter(v => v.place_name === name);
+    if (matches.length === 0) return null;
+    const lat = matches.reduce((s, v) => s + v.latitude, 0) / matches.length;
+    const lon = matches.reduce((s, v) => s + v.longitude, 0) / matches.length;
+    return { lat, lon };
+  }
+  const database = await getDb();
+  if (!database) return null;
+  const result = await database.getFirstAsync(
+    `SELECT AVG(latitude) as lat, AVG(longitude) as lon FROM visits WHERE place_name = ?;`,
+    [name]
+  );
+  if (!result || result.lat == null || result.lon == null) return null;
+  return { lat: result.lat, lon: result.lon };
+}
+
 export async function getTopPlaces(days = 36500, importTimestamp?: number, baseTimestamp?: number): Promise<{ name: string; count: number; category: string }[]> {
   const base = baseTimestamp || Date.now();
   const cutoff = base - (days * 24 * 60 * 60 * 1000);

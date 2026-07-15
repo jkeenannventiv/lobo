@@ -1,0 +1,66 @@
+diff --git a/src/config/categoryMappings.ts b/src/config/categoryMappings.ts
+index 773e92c..1568c58 100644
+--- a/src/config/categoryMappings.ts
++++ b/src/config/categoryMappings.ts
+@@ -365,6 +365,10 @@ export const CATEGORY_MAPPINGS: CategoryMapping[] = [
+   { name: 'The UPS Store',      match_type: 'prefix', category: 'Services',          subcategory: 'Shipping' },
+   { name: 'United States Post', match_type: 'prefix', category: 'Services',          subcategory: 'Shipping' },
+   { name: 'USPS',               match_type: 'prefix', category: 'Services',          subcategory: 'Shipping' },
++
++  // ── One-off local overrides ──────────────────────────────────────────────
++  // Not national chains, so a keyword rule can't find them — named directly.
++  { name: 'Hill Center Brentwood', match_type: 'prefix', category: 'Retail',         subcategory: null },
+ ];
+ 
+ // Pre-build lowercased index at module load time for fast matching
+@@ -439,7 +443,7 @@ const NAME_KEYWORD_RULES: KeywordRule[] = [
+ 
+   // Cafe / Coffee
+   {
+-    keywords: ['cafe', 'café', 'coffee', 'espresso', 'roastery', 'tea house', 'boba', 'bubble tea'],
++    keywords: ['cafe', 'café', 'coffee', 'espresso', 'roastery', 'tea house', 'boba', 'bubble tea', 'bakery', 'patisserie', 'pâtisserie', 'pastry', 'confectionery', 'bake shop'],
+     category: 'Restaurants',
+     subcategory: 'Cafe',
+   },
+@@ -477,7 +481,7 @@ const NAME_KEYWORD_RULES: KeywordRule[] = [
+     subcategory: null,
+   },
+   {
+-    keywords: ['urgent care', 'emergency room', 'er ', 'hospital', 'medical center', 'health center', 'clinic', 'doctor', 'dentist', 'orthodontist', 'optometrist', 'eye care', 'vision center', 'chiropractor', 'pediatric', 'ob-gyn', 'dermatology', 'dermatologist'],
++    keywords: ['urgent care', 'emergency room', 'er', 'hospital', 'medical center', 'health center', 'clinic', 'doctor', 'dentist', 'orthodontist', 'optometrist', 'eye care', 'vision center', 'chiropractor', 'pediatric', 'ob-gyn', 'dermatology', 'dermatologist'],
+     category: 'Health & Fitness',
+     subcategory: 'Medical',
+   },
+@@ -501,10 +505,31 @@ const NAME_KEYWORD_RULES: KeywordRule[] = [
+ 
+   // Hotel / Travel
+   {
+-    keywords: ['hotel', 'inn', 'suites', 'resort', 'lodge', 'motel', 'hostel', 'bed and breakfast', 'b&b', 'airbnb'],
++    keywords: [
++      'hotel', 'inn', 'suites', 'resort', 'lodge', 'motel', 'hostel', 'bed and breakfast', 'b&b', 'airbnb',
++      // Brand names that don't otherwise contain a generic hotel word —
++      // needed because these often appear as "<City/Airport> <Brand>"
++      // (brand not at the start of the name, so the chain prefix-match misses it too).
++      'marriott', 'hilton', 'hyatt', 'sheraton', 'westin', 'renaissance', 'doubletree',
++      'aloft', 'element by westin', 'tru by hilton', 'la quinta', 'super 8', 'extended stay',
++      'drury', 'wyndham', 'radisson', 'crowne plaza', 'fairmont', 'ritz-carlton', 'four seasons',
++      'omni hotel', 'loews hotel', 'kimpton', 'red roof', 'motel 6', 'econo lodge', 'travelodge',
++      'baymont', 'microtel', 'candlewood suites', 'staybridge', 'homewood suites', 'home2 suites',
++      'springhill suites', 'towneplace suites', 'fairfield inn', 'residence inn', 'courtyard by marriott',
++    ],
+     category: 'Travel',
+     subcategory: 'Hotel',
+   },
++  {
++    keywords: [
++      // Airport lounges — checked before the general Airport rule so a
++      // lounge visit doesn't get lumped in as a generic Airport visit.
++      'admirals club', 'delta sky club', 'united club', 'centurion lounge',
++      'priority pass', 'escape lounge', 'club lounge', 'airspace lounge',
++    ],
++    category: 'Travel',
++    subcategory: 'Lounge',
++  },
+   {
+     keywords: ['airport', 'terminal', 'concourse'],
+     category: 'Travel',

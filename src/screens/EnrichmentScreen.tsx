@@ -209,6 +209,16 @@ export default function EnrichmentScreen({ navigation }: any) {
         )}
 
         {done && (
+          <View style={styles.storageTip}>
+            <Text style={styles.storageTipText}>
+              💾 Your Timeline data is now safely stored in Lobo. You can delete the
+              downloaded file (timeline.json or location-history.json) from your
+              Downloads folder to free up space — Lobo doesn't need it anymore.
+            </Text>
+          </View>
+        )}
+
+        {done && (
           <TouchableOpacity
             style={styles.button}
             onPress={() => navigation.replace('Home')}
@@ -306,6 +316,17 @@ const styles = StyleSheet.create({
   skipText: {
     color: '#555570',
     fontSize: 16,
+  },
+  storageTip: {
+    backgroundColor: '#f0f4f8',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+  },
+  storageTipText: {
+    fontSize: 13,
+    color: '#555570',
+    lineHeight: 20,
   },
   reviewCard: {
     backgroundColor: '#f0f4f8',

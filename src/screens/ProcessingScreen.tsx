@@ -14,6 +14,20 @@ import LogoHeader from '../components/LogoHeader';
 
 const isWeb = Platform.OS === 'web';
 
+// Lobo's DocumentPicker call uses copyToCacheDirectory: true, so fileUri here
+// points at a copy inside the app's own sandbox — not the original file in
+// Downloads. Once we've read it into SQLite we don't need that copy anymore,
+// and deleting it needs no special permission since the app owns the path.
+async function cleanupCachedSourceFile(fileUri?: string) {
+  if (!fileUri || isWeb) return;
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    await FileSystem.deleteAsync(fileUri, { idempotent: true });
+  } catch {
+    // Best-effort — a failed cleanup shouldn't block the user.
+  }
+}
+
 export default function ProcessingScreen({ navigation, route }: any) {
   const { fileUri, fileName, forceFullReload } = route.params ?? {};
   const [status, setStatus] = useState('Initializing...');
@@ -93,6 +107,7 @@ export default function ProcessingScreen({ navigation, route }: any) {
         // No new records — that's fine, just navigate forward
         setStatus('Already up to date!');
         await saveLastImport();
+        await cleanupCachedSourceFile(fileUri);
         setTimeout(() => {
           navigation.replace('Enrichment');
         }, 1500);
@@ -126,6 +141,7 @@ export default function ProcessingScreen({ navigation, route }: any) {
 
       await logImport(records.length, 'new');
       await saveLastImport();
+      await cleanupCachedSourceFile(fileUri);
 
       // Log to Supabase in background — only when feature is enabled
       if (FEATURES.SUPABASE_LOGGING_ENABLED) {
