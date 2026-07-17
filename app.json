@@ -53,7 +53,8 @@
             "forceStaticLinking": ["RNFBApp", "RNFBAuth"]
            }
         }
-      ]
+      ],
+      "./plugins/withRemoveAdId"     
      ],
     "extra": {
       "eas": {
