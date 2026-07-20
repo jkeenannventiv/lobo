@@ -16,9 +16,7 @@ import { FEATURES } from '../config/featureFlags';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const requestTrackingPermissionsAsync = async () => {
-  if (Platform.OS !== 'ios') return { status: 'granted' };
-  const mod = await import('expo-tracking-transparency');
-  return mod.requestTrackingPermissionsAsync();
+  return { status: 'granted' };
 };
 
 export default function SettingsScreen({ navigation }: any) {

@@ -15,9 +15,7 @@ import { getUserId, syncConsentToSupabase } from '../../config/userService';
 
 
 const requestTrackingPermissionsAsync = async () => {
-  if (Platform.OS !== 'ios') return { status: 'granted' };
-  const mod = await import('expo-tracking-transparency');
-  return mod.requestTrackingPermissionsAsync();
+  return { status: 'granted' };
 };
 export default function ConsentScreen({ navigation }: any) {
   const [termsAgreed, setTermsAgreed] = useState(false);
