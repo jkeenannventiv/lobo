@@ -14,12 +14,11 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.getlobo.lobo",
-      "buildNumber": "9",
+      "buildNumber": "10",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationWhenInUseUsageDescription": "Lobo uses your location to detect      your home and work areas so it can accurately label visits in your movement history — for example, marking time spent at your home address as 'Home'.",
-        "NSUserTrackingUsageDescription": "Lobo uses this to share anonymous behavioral segment flags (such as 'frequent restaurant visitor') to help improve the app. Your identity and location history are never shared."
+        "NSLocationWhenInUseUsageDescription": "Lobo uses your location to detect      your home and work areas so it can accurately label visits in your movement history — for example, marking time spent at your home address as 'Home'."
        }
     },
     "android": {
@@ -42,7 +41,6 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-tracking-transparency",
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
       [
